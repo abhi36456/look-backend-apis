@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import crypto from 'crypto';
+import fs from 'fs/promises';
+import nodePath from 'path';
 
 function hashPassword(password: string) {
   return crypto.createHash('sha256').update(password).digest('hex');
@@ -192,7 +194,7 @@ export async function GET(
     if (!auth || auth.role !== 'admin') {
       return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
     }
-    
+
     const settings = await executeWithDbFallback(
       async () => {
         const dbSetting = await prisma.systemSetting.findUnique({
@@ -212,7 +214,7 @@ export async function GET(
         return mockDb.twilioSettings;
       }
     );
-    
+
     return NextResponse.json(settings);
   }
 
@@ -297,7 +299,12 @@ export async function GET(
       }
     );
     if (path.includes('provider/setup/categories')) {
-      return NextResponse.json(list.map((item: any) => item.title));
+      return NextResponse.json(
+        list.map((item: any) => ({
+          id: item.id,
+          title: item.title,
+        }))
+      );
     }
     return NextResponse.json(list);
   }
@@ -312,15 +319,16 @@ export async function GET(
         });
         return dbList.map(s => ({
           id: s.id,
+          mainTypeId: s.mainTypeId,
           mainType: s.mainType.title,
           title: s.title
         }));
       },
       async () => {
         return [
-          { id: 1, mainType: 'Haircut', title: 'Classic cut' },
-          { id: 2, mainType: 'Haircut', title: 'Skin fade' },
-          { id: 3, mainType: 'Beard', title: 'Beard trim' },
+          { id: 1, mainTypeId: 1, mainType: 'Haircut', title: 'Classic cut' },
+          { id: 2, mainTypeId: 1, mainType: 'Haircut', title: 'Skin fade' },
+          { id: 3, mainTypeId: 2, mainType: 'Beard', title: 'Beard trim' },
         ];
       }
     );
@@ -337,6 +345,7 @@ export async function GET(
         });
         return dbList.map(a => ({
           id: a.id,
+          mainTypeId: a.ambienceGroupId,
           mainType: a.ambienceGroup.title,
           mainTypeIcon: a.ambienceGroup.icon,
           title: a.title,
@@ -345,10 +354,10 @@ export async function GET(
       },
       async () => {
         return [
-          { id: 1, mainType: 'Amenities', title: 'Free Wi-Fi' },
-          { id: 2, mainType: 'Amenities', title: 'Parking' },
-          { id: 3, mainType: 'Ambience', title: 'Quiet Space' },
-          { id: 4, mainType: 'Ambience', title: 'Relaxing Music' },
+          { id: 1, mainTypeId: 1, mainType: 'Amenities', title: 'Free Wi-Fi' },
+          { id: 2, mainTypeId: 1, mainType: 'Amenities', title: 'Parking' },
+          { id: 3, mainTypeId: 2, mainType: 'Ambience', title: 'Quiet Space' },
+          { id: 4, mainTypeId: 2, mainType: 'Ambience', title: 'Relaxing Music' },
         ];
       }
     );
@@ -587,7 +596,7 @@ export async function POST(
       const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${cleanAccountSid}/Messages.json`;
       const messageBody = `Your LookClean password reset verification code is: ${otp}`;
       const authString = Buffer.from(`${cleanAccountSid}:${cleanAuthToken}`).toString('base64');
-      
+
       const params = new URLSearchParams();
       if (cleanMessagingServiceSid) {
         params.append('MessagingServiceSid', cleanMessagingServiceSid);
@@ -609,9 +618,9 @@ export async function POST(
       const resData = await twilioRes.json();
       if (!twilioRes.ok) {
         console.error('[Twilio Send Forgot Password OTP Error]', resData);
-        return NextResponse.json({ 
-          success: false, 
-          message: `SMS gateway error: ${resData.message || 'Twilio config failure'}` 
+        return NextResponse.json({
+          success: false,
+          message: `SMS gateway error: ${resData.message || 'Twilio config failure'}`
         }, { status: 400 });
       }
 
@@ -620,9 +629,9 @@ export async function POST(
 
     } catch (err: any) {
       console.error('[Twilio Send Forgot Password OTP Exception]', err);
-      return NextResponse.json({ 
-        success: false, 
-        message: `SMS transmission failed: ${err.message || 'Connection timeout'}` 
+      return NextResponse.json({
+        success: false,
+        message: `SMS transmission failed: ${err.message || 'Connection timeout'}`
       }, { status: 500 });
     }
   }
@@ -741,7 +750,7 @@ export async function POST(
     const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${cleanAccountSid}/Messages.json`;
     const messageBody = `Your LookClean mobile verification code is: ${otp}`;
     const authString = Buffer.from(`${cleanAccountSid}:${cleanAuthToken}`).toString('base64');
-    
+
     const params = new URLSearchParams();
     if (cleanMessagingServiceSid) {
       params.append('MessagingServiceSid', cleanMessagingServiceSid);
@@ -764,19 +773,19 @@ export async function POST(
       const resData = await twilioRes.json();
       if (!twilioRes.ok) {
         console.error('[Twilio Send OTP Error]', resData);
-        return NextResponse.json({ 
-          success: false, 
-          message: `SMS gateway error: ${resData.message || 'Twilio config failure'}` 
+        return NextResponse.json({
+          success: false,
+          message: `SMS gateway error: ${resData.message || 'Twilio config failure'}`
         }, { status: 400 });
       }
-      
+
       console.log(`[Twilio OTP Sent] Success. SID: ${resData.sid}`);
       return NextResponse.json({ success: true, message: 'SMS OTP sent successfully via Twilio!' });
     } catch (err: any) {
       console.error('[Twilio Send OTP Exception]', err);
-      return NextResponse.json({ 
-        success: false, 
-        message: `SMS transmission failed: ${err.message || 'Connection timeout'}` 
+      return NextResponse.json({
+        success: false,
+        message: `SMS transmission failed: ${err.message || 'Connection timeout'}`
       }, { status: 500 });
     }
   }
@@ -827,7 +836,7 @@ export async function POST(
       return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
     }
     const { activeMode, staging, live } = body as any;
-    
+
     const updatedSettings = await executeWithDbFallback(
       async () => {
         let currentSettings = { ...mockDb.twilioSettings };
@@ -837,7 +846,7 @@ export async function POST(
         if (dbSetting) {
           currentSettings = JSON.parse(dbSetting.value);
         }
-        
+
         if (activeMode) currentSettings.activeMode = activeMode;
         if (staging) {
           currentSettings.staging = {
@@ -851,13 +860,13 @@ export async function POST(
             ...live
           };
         }
-        
+
         await prisma.systemSetting.upsert({
           where: { key: 'twilio' },
           update: { value: JSON.stringify(currentSettings) },
           create: { key: 'twilio', value: JSON.stringify(currentSettings) },
         });
-        
+
         // Also update local mock for consistency
         mockDb.twilioSettings = currentSettings;
         return currentSettings;
@@ -879,7 +888,7 @@ export async function POST(
         return mockDb.twilioSettings;
       }
     );
-    
+
     return NextResponse.json({ success: true, settings: updatedSettings });
   }
 
@@ -890,7 +899,7 @@ export async function POST(
       return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
     }
     const { mode, accountSid, authToken, phoneNumber, verificationServiceId, messagingServiceSid, testPhoneNumber } = body as any;
-    
+
     const cleanAccountSid = accountSid?.trim();
     const cleanAuthToken = authToken?.trim();
     const cleanPhoneNumber = phoneNumber?.trim();
@@ -899,18 +908,18 @@ export async function POST(
 
     // Simulate connection delay
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    
+
     if (!cleanAccountSid || !cleanAuthToken || (!cleanPhoneNumber && !cleanMessagingServiceSid)) {
-      return NextResponse.json({ 
-        success: false, 
-        message: 'Invalid configuration: Account SID, Auth Token, and either Twilio Number or SMS Service Sid are required.' 
+      return NextResponse.json({
+        success: false,
+        message: 'Invalid configuration: Account SID, Auth Token, and either Twilio Number or SMS Service Sid are required.'
       }, { status: 400 });
     }
 
     if (!cleanAccountSid.startsWith('AC')) {
-      return NextResponse.json({ 
-        success: false, 
-        message: `Connection failed for ${mode} mode: Account SID must start with 'AC'.` 
+      return NextResponse.json({
+        success: false,
+        message: `Connection failed for ${mode} mode: Account SID must start with 'AC'.`
       }, { status: 400 });
     }
 
@@ -925,7 +934,7 @@ export async function POST(
     const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${cleanAccountSid}/Messages.json`;
     const messageBody = `Your LookClean Twilio ${mode.toUpperCase()} gateway verification was successful!`;
     const authString = Buffer.from(`${cleanAccountSid}:${cleanAuthToken}`).toString('base64');
-    
+
     const params = new URLSearchParams();
     if (cleanMessagingServiceSid) {
       params.append('MessagingServiceSid', cleanMessagingServiceSid);
@@ -948,22 +957,22 @@ export async function POST(
       const resData = await twilioRes.json();
       if (!twilioRes.ok) {
         console.error('[Twilio Verify Connection Error]', resData);
-        return NextResponse.json({ 
-          success: false, 
-          message: `Twilio gateway verification failed: ${resData.message || 'Invalid credentials'}` 
+        return NextResponse.json({
+          success: false,
+          message: `Twilio gateway verification failed: ${resData.message || 'Invalid credentials'}`
         }, { status: 400 });
       }
-      
+
       console.log(`[Twilio Verify Connection Sent] Success. SID: ${resData.sid}`);
-      return NextResponse.json({ 
-        success: true, 
-        message: `Successfully verified Twilio connection! Test SMS sent to ${testPhoneNumber}.` 
+      return NextResponse.json({
+        success: true,
+        message: `Successfully verified Twilio connection! Test SMS sent to ${testPhoneNumber}.`
       });
     } catch (err: any) {
       console.error('[Twilio Verify Connection Exception]', err);
-      return NextResponse.json({ 
-        success: false, 
-        message: `Twilio connection failed: ${err.message || 'Connection timeout'}` 
+      return NextResponse.json({
+        success: false,
+        message: `Twilio connection failed: ${err.message || 'Connection timeout'}`
       }, { status: 500 });
     }
   }
@@ -1257,7 +1266,7 @@ export async function POST(
                 profileId: profile.id,
                 name: s.name,
                 price: parseInt(s.price) || 0,
-                category: s.category || 'General',
+                category: s.category !== undefined && s.category !== null ? String(s.category) : 'General',
               })),
             });
           }
@@ -1275,7 +1284,7 @@ export async function POST(
               profileId: mockProfile.id,
               name: s.name,
               price: parseInt(s.price) || 0,
-              category: s.category || 'General',
+              category: s.category !== undefined && s.category !== null ? String(s.category) : 'General',
             });
           });
         }
@@ -1314,7 +1323,7 @@ export async function POST(
               data: items.map((item: any) => ({
                 profileId: profile.id,
                 name: item.name,
-                type: item.type || 'amenity',
+                type: item.type !== undefined && item.type !== null ? String(item.type) : 'amenity',
                 icon: item.icon || null,
               })),
             });
@@ -1332,7 +1341,7 @@ export async function POST(
               id: Math.floor(Math.random() * 10000),
               profileId: mockProfile.id,
               name: item.name,
-              type: item.type || 'amenity',
+              type: item.type !== undefined && item.type !== null ? String(item.type) : 'amenity',
               icon: item.icon || null,
             });
           });
@@ -1350,7 +1359,55 @@ export async function POST(
     if (!auth || auth.role !== 'provider') {
       return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
     }
-    const { experience, licenseType, certificateUrl } = body as any;
+
+    let experience: any = null;
+    let licenseType: any = null;
+    let certificateUrl: any = null;
+
+    const contentType = request.headers.get('content-type') || '';
+    if (contentType.includes('multipart/form-data')) {
+      try {
+        const formData = await request.formData();
+        experience = formData.get('experience');
+        licenseType = formData.get('licenseType');
+        const certificate = formData.get('certificate');
+
+        if (certificate && typeof certificate === 'object' && 'name' in certificate) {
+          const file = certificate as any;
+          const mimeType = file.type || '';
+          const fileName = file.name || '';
+          const fileExt = nodePath.extname(fileName).toLowerCase();
+
+          const isValidMime = mimeType === 'application/pdf' || mimeType.startsWith('image/');
+          const isValidExt = ['.pdf', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff'].includes(fileExt);
+
+          if (!isValidMime && !isValidExt) {
+            return NextResponse.json(
+              { message: 'Certificate must be a PDF or an image file only' },
+              { status: 400 }
+            );
+          }
+
+          const bytes = await file.arrayBuffer();
+          const buffer = Buffer.from(bytes);
+          const uploadDir = nodePath.join(process.cwd(), 'public', 'uploads');
+          await fs.mkdir(uploadDir, { recursive: true });
+          const uniqueFileName = `certificate_${auth.userId}_${Date.now()}${fileExt || '.pdf'}`;
+          const filePath = nodePath.join(uploadDir, uniqueFileName);
+          await fs.writeFile(filePath, buffer);
+          certificateUrl = `/uploads/${uniqueFileName}`;
+        } else if (typeof certificate === 'string') {
+          certificateUrl = certificate;
+        }
+      } catch (err: any) {
+        return NextResponse.json({ message: 'Failed to process file upload: ' + err.message }, { status: 400 });
+      }
+    } else {
+      experience = (body as any).experience;
+      licenseType = (body as any).licenseType;
+      certificateUrl = (body as any).certificateUrl;
+    }
+
     try {
       const response = await executeWithDbFallback(
         async () => {
@@ -1387,7 +1444,7 @@ export async function POST(
           mockProfile.experience = parseInt(experience) || 0;
           mockProfile.licenseType = licenseType || null;
           mockProfile.certificateUrl = certificateUrl || null;
-          
+
           const mockUser = mockDb.users.find((u) => u.id === auth.userId);
           if (mockUser) mockUser.onboardingCompleted = true;
           return mockProfile;
@@ -1453,11 +1510,11 @@ export async function PUT(
                   create: (providerProfile.services || []).map((s: any) => ({
                     name: s.name,
                     price: s.price,
-                    category: s.category || 'General',
+                    category: s.category !== undefined && s.category !== null ? String(s.category) : 'General',
                   })),
                 },
                 amenities: {
-                  create: (providerProfile.amenities || []).map((a: any) => typeof a === 'string' ? { name: a } : { name: a.name, icon: a.icon || null, type: a.type || 'amenity' }),
+                  create: (providerProfile.amenities || []).map((a: any) => typeof a === 'string' ? { name: a } : { name: a.name, icon: a.icon || null, type: a.type !== undefined && a.type !== null ? String(a.type) : 'amenity' }),
                 },
               },
               update: {
@@ -1468,12 +1525,12 @@ export async function PUT(
                   create: (providerProfile.services || []).map((s: any) => ({
                     name: s.name,
                     price: s.price,
-                    category: s.category || 'General',
+                    category: s.category !== undefined && s.category !== null ? String(s.category) : 'General',
                   })),
                 },
                 amenities: {
                   deleteMany: {},
-                  create: (providerProfile.amenities || []).map((a: any) => typeof a === 'string' ? { name: a } : { name: a.name, icon: a.icon || null, type: a.type || 'amenity' }),
+                  create: (providerProfile.amenities || []).map((a: any) => typeof a === 'string' ? { name: a } : { name: a.name, icon: a.icon || null, type: a.type !== undefined && a.type !== null ? String(a.type) : 'amenity' }),
                 },
               },
             },
@@ -1522,7 +1579,7 @@ export async function PUT(
               profileId: profile.id,
               name: s.name,
               price: s.price,
-              category: s.category || 'General',
+              category: s.category !== undefined && s.category !== null ? String(s.category) : 'General',
             });
           });
 
@@ -1534,7 +1591,7 @@ export async function PUT(
               profileId: profile.id,
               name: typeof a === 'string' ? a : a.name,
               icon: typeof a === 'string' ? null : (a.icon || null),
-              type: typeof a === 'string' ? 'amenity' : (a.type || 'amenity'),
+              type: typeof a === 'string' ? 'amenity' : (a.type !== undefined && a.type !== null ? String(a.type) : 'amenity'),
             });
           });
         }

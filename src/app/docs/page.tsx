@@ -345,7 +345,23 @@ const openApiSpec = {
         tags: ['Provider Onboarding Flow'],
         summary: 'Step 2: Get all admin-defined categories',
         responses: {
-          200: { description: 'Returns list of category titles' },
+          200: {
+            description: 'Returns list of category objects',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'integer', example: 1 },
+                      title: { type: 'string', example: 'Haircut' }
+                    }
+                  }
+                }
+              }
+            }
+          },
         },
       },
       post: {
@@ -361,8 +377,8 @@ const openApiSpec = {
                 properties: {
                   categories: {
                     type: 'array',
-                    items: { type: 'string' },
-                    example: ['Hair', 'Nails'],
+                    items: { type: 'integer' },
+                    example: [1, 2],
                   },
                 },
               },
@@ -400,7 +416,7 @@ const openApiSpec = {
                       properties: {
                         name: { type: 'string', example: 'Haircut' },
                         price: { type: 'integer', example: 45 },
-                        category: { type: 'string', example: 'Hair' },
+                        category: { type: 'string', example: '1' },
                       },
                     },
                   },
@@ -439,7 +455,7 @@ const openApiSpec = {
                       type: 'object',
                       properties: {
                         name: { type: 'string', example: 'Free Wi-Fi' },
-                        type: { type: 'string', example: 'Amenities' },
+                        type: { type: 'string', example: '1' },
                       },
                     },
                   },
@@ -460,6 +476,17 @@ const openApiSpec = {
         requestBody: {
           required: true,
           content: {
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                required: ['experience'],
+                properties: {
+                  experience: { type: 'integer', example: 8 },
+                  licenseType: { type: 'string', example: 'Cosmetology License' },
+                  certificate: { type: 'string', format: 'binary', description: 'Upload certificate (PDF or Image only)' },
+                },
+              },
+            },
             'application/json': {
               schema: {
                 type: 'object',
