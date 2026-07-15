@@ -198,20 +198,31 @@ function parseCsv(csvText: string): { title: string; icon?: string }[] {
   return results;
 }
 
+function getBaseUrl(request?: any): string {
+  let baseUrl = process.env.APP_URL || '';
+  if (baseUrl) {
+    if (baseUrl.endsWith('/')) {
+      baseUrl = baseUrl.slice(0, -1);
+    }
+    return baseUrl;
+  }
+  if (request && typeof request === 'object' && 'url' in request) {
+    try {
+      const url = new URL(request.url);
+      return `${url.protocol}//${url.host}`;
+    } catch {
+      // Ignore
+    }
+  }
+  return '';
+}
+
 function sanitizeUser(user: unknown, request?: any) {
   if (!user) return null;
   const plainUser = JSON.parse(JSON.stringify(user)) as Record<string, any>;
   delete plainUser.password;
 
-  let baseUrl = '';
-  if (request && typeof request === 'object' && 'url' in request) {
-    try {
-      const url = new URL(request.url);
-      baseUrl = `${url.protocol}//${url.host}`;
-    } catch {
-      // Ignore
-    }
-  }
+  const baseUrl = getBaseUrl(request);
 
   if (baseUrl) {
     if (plainUser.clientProfile && typeof plainUser.clientProfile === 'object') {
@@ -535,13 +546,7 @@ export async function GET(
     if (path === 'provider/setup/ambience' && auth.role !== 'provider' && auth.role !== 'admin') {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
-    let baseUrl = '';
-    try {
-      const url = new URL(request.url);
-      baseUrl = `${url.protocol}//${url.host}`;
-    } catch {
-      // Ignore
-    }
+    const baseUrl = getBaseUrl(request);
 
     if (path === 'provider/setup/ambience') {
       const groupsList = await executeWithDbFallback(
@@ -1351,13 +1356,7 @@ export async function POST(
       return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
     }
 
-    let baseUrl = '';
-    try {
-      const url = new URL(request.url);
-      baseUrl = `${url.protocol}//${url.host}`;
-    } catch {
-      // Ignore
-    }
+    const baseUrl = getBaseUrl(request);
 
     let mainType: any = undefined;
     let mainTypeIcon: any = undefined;
@@ -1634,13 +1633,7 @@ export async function POST(
         }
       );
 
-      let baseUrl = '';
-      try {
-        const url = new URL(request.url);
-        baseUrl = `${url.protocol}//${url.host}`;
-      } catch {
-        // Ignore
-      }
+      const baseUrl = getBaseUrl(request);
 
       const resProfile = JSON.parse(JSON.stringify(profile));
       if (baseUrl) {
@@ -1958,13 +1951,7 @@ export async function POST(
           return mockProfile;
         }
       );
-      let baseUrl = '';
-      try {
-        const url = new URL(request.url);
-        baseUrl = `${url.protocol}//${url.host}`;
-      } catch {
-        // Ignore
-      }
+      const baseUrl = getBaseUrl(request);
 
       const resProfile = JSON.parse(JSON.stringify(response));
       if (baseUrl && resProfile && resProfile.certificateUrl && resProfile.certificateUrl.startsWith('/')) {
