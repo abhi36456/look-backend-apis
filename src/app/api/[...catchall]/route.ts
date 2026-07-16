@@ -222,6 +222,11 @@ function sanitizeUser(user: unknown, request?: any) {
   const plainUser = JSON.parse(JSON.stringify(user)) as Record<string, any>;
   delete plainUser.password;
 
+  if (plainUser.clientProfile && typeof plainUser.clientProfile === 'object') {
+    delete plainUser.clientProfile.id;
+    delete plainUser.clientProfile.userId;
+  }
+
   const baseUrl = getBaseUrl(request);
 
   if (baseUrl) {
