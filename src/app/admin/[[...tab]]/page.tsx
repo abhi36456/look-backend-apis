@@ -1822,7 +1822,7 @@ export default function AdminPage() {
                                 )}
                               </div>
                             </td>
-                            <td className="p-4 font-bold text-white">{user.name || 'Unnamed User'}</td>
+                            <td className="p-4 font-bold text-white">{user.name || ''}</td>
                             <td className="p-4 text-gray-300">{user.email}</td>
                             <td className="p-4">
                               {user.role ? (

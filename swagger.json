@@ -341,10 +341,6 @@
                     "type": "string",
                     "format": "binary",
                     "description": "Upload client profile image file"
-                  },
-                  "onboardingCompleted": {
-                    "type": "boolean",
-                    "example": true
                   }
                 }
               }
@@ -374,10 +370,6 @@
                   "profileImageUrl": {
                     "type": "string",
                     "example": "https://..."
-                  },
-                  "onboardingCompleted": {
-                    "type": "boolean",
-                    "example": true
                   }
                 }
               }

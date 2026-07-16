@@ -2005,7 +2005,6 @@ export async function PUT(
     let location: any = undefined;
     let latitude: any = undefined;
     let longitude: any = undefined;
-    let onboardingCompleted: any = undefined;
     let profileImageUrl: any = undefined;
 
     const contentType = request.headers.get('content-type') || '';
@@ -2016,7 +2015,6 @@ export async function PUT(
         location = formData.get('location');
         latitude = formData.get('latitude');
         longitude = formData.get('longitude');
-        onboardingCompleted = formData.get('onboardingCompleted');
         const profileImageFile = formData.get('profileImage');
 
         if (profileImageFile && typeof profileImageFile === 'object' && 'name' in profileImageFile) {
@@ -2052,16 +2050,23 @@ export async function PUT(
       location = body.location;
       latitude = body.latitude;
       longitude = body.longitude;
-      onboardingCompleted = body.onboardingCompleted;
       profileImageUrl = body.profileImageUrl;
     }
+
+    // Automatically set onboardingCompleted to true if the client sends: name, location, latitude, and longitude
+    const hasName = name !== undefined && name !== null && String(name).trim() !== '';
+    const hasLocation = location !== undefined && location !== null && String(location).trim() !== '';
+    const hasLatitude = latitude !== undefined && latitude !== null && String(latitude).trim() !== '';
+    const hasLongitude = longitude !== undefined && longitude !== null && String(longitude).trim() !== '';
+
+    const autoOnboardingCompleted = hasName && hasLocation && hasLatitude && hasLongitude;
 
     const updatedUser = await executeWithDbFallback(
       async () => {
         const updateData: any = {};
         if (name !== undefined && name !== null) updateData.name = name;
-        if (onboardingCompleted !== undefined && onboardingCompleted !== null) {
-          updateData.onboardingCompleted = onboardingCompleted === 'true' || onboardingCompleted === true;
+        if (autoOnboardingCompleted) {
+          updateData.onboardingCompleted = true;
         }
 
         const clientProfileData: any = {};
@@ -2089,8 +2094,8 @@ export async function PUT(
         const user = mockDb.users.find((u) => u.id === auth.userId);
         if (!user) throw new Error('User not found');
         if (name !== undefined && name !== null) user.name = name;
-        if (onboardingCompleted !== undefined && onboardingCompleted !== null) {
-          user.onboardingCompleted = onboardingCompleted === 'true' || onboardingCompleted === true;
+        if (autoOnboardingCompleted) {
+          user.onboardingCompleted = true;
         }
 
         let profile = mockDb.profiles.find((p) => p.userId === auth.userId);
@@ -2110,7 +2115,11 @@ export async function PUT(
       }
     );
 
-    return NextResponse.json(sanitizeUser(updatedUser, request));
+    const sanitized = sanitizeUser(updatedUser, request);
+    if (sanitized && typeof sanitized === 'object') {
+      delete (sanitized as any).onboardingCompleted;
+    }
+    return NextResponse.json(sanitized);
   }
 
 
