@@ -84,12 +84,16 @@ async function executeWithDbFallback<T>(
   dbAction: () => Promise<T>,
   fallbackAction: () => Promise<T>
 ): Promise<T> {
-  try {
-    // Try executing DB action. If prisma is down, it throws
-    return await dbAction();
-  } catch (err) {
-    console.warn('[DB Error] Falling back to mock memory storage', err);
+  // If no DATABASE_URL is configured, use fallback mock memory DB
+  if (!process.env.DATABASE_URL || process.env.DATABASE_URL.trim() === '') {
     return await fallbackAction();
+  }
+
+  try {
+    return await dbAction();
+  } catch (err: any) {
+    console.error('[DB Error] Prisma operation failed:', err);
+    throw err;
   }
 }
 
@@ -410,9 +414,10 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ catchall?: string[] }> }
 ) {
-  const { catchall } = await params;
-  const path = catchall?.join('/') || '';
-  console.log(`[API GET] /api/${path}`);
+  try {
+    const { catchall } = await params;
+    const path = catchall?.join('/') || '';
+    console.log(`[API GET] /api/${path}`);
 
   // 1. Fetch client profile (/api/clients/me or /api/client/me)
   if (path === 'clients/me' || path === 'client/me') {
@@ -814,15 +819,20 @@ export async function GET(
   }
 
   return NextResponse.json({ message: 'Endpoint not found' }, { status: 404 });
+  } catch (err: any) {
+    console.error(`[API GET Error]`, err);
+    return NextResponse.json({ message: err.message || 'GET failed', error: String(err) }, { status: 500 });
+  }
 }
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ catchall?: string[] }> }
 ) {
-  const { catchall } = await params;
-  const path = catchall?.join('/') || '';
-  console.log(`[API POST] /api/${path}`);
+  try {
+    const { catchall } = await params;
+    const path = catchall?.join('/') || '';
+    console.log(`[API POST] /api/${path}`);
 
   let body = {};
   const contentType = request.headers.get('content-type') || '';
@@ -2437,15 +2447,20 @@ export async function POST(
   }
 
   return NextResponse.json({ message: 'Endpoint not found' }, { status: 404 });
+  } catch (err: any) {
+    console.error(`[API POST Error]`, err);
+    return NextResponse.json({ message: err.message || 'POST failed', error: String(err) }, { status: 500 });
+  }
 }
 
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ catchall?: string[] }> }
 ) {
-  const { catchall } = await params;
-  const path = catchall?.join('/') || '';
-  console.log(`[API PUT] /api/${path}`);
+  try {
+    const { catchall } = await params;
+    const path = catchall?.join('/') || '';
+    console.log(`[API PUT] /api/${path}`);
 
   const auth = await getAuthenticatedUser(request);
   if (!auth) {
@@ -2762,15 +2777,20 @@ export async function PUT(
 
 
   return NextResponse.json({ message: 'Endpoint not found' }, { status: 404 });
+  } catch (err: any) {
+    console.error(`[API PUT Error]`, err);
+    return NextResponse.json({ message: err.message || 'PUT failed', error: String(err) }, { status: 500 });
+  }
 }
 
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ catchall?: string[] }> }
 ) {
-  const { catchall } = await params;
-  const path = catchall?.join('/') || '';
-  console.log(`[API DELETE] /api/${path}`);
+  try {
+    const { catchall } = await params;
+    const path = catchall?.join('/') || '';
+    console.log(`[API DELETE] /api/${path}`);
 
   const auth = await getAuthenticatedUser(request);
   if (!auth) {
@@ -2927,4 +2947,8 @@ export async function DELETE(
   }
 
   return NextResponse.json({ message: 'Endpoint not found' }, { status: 404 });
+  } catch (err: any) {
+    console.error(`[API DELETE Error]`, err);
+    return NextResponse.json({ message: err.message || 'DELETE failed', error: String(err) }, { status: 500 });
+  }
 }
