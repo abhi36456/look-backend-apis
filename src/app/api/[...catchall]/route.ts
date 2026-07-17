@@ -258,7 +258,15 @@ function sanitizeUser(user: unknown, request?: any) {
       if (cert.startsWith('[') && cert.endsWith(']')) {
         try {
           const certsArray = JSON.parse(cert) as string[];
-          const mappedCerts = certsArray.map(c => (c && c.startsWith('/') && baseUrl) ? `${baseUrl}${c}` : c);
+          const flattenedCerts: string[] = [];
+          certsArray.forEach((item: string) => {
+            if (item && item.includes(',')) {
+              flattenedCerts.push(...item.split(',').map((s: string) => s.trim()));
+            } else if (item) {
+              flattenedCerts.push(item);
+            }
+          });
+          const mappedCerts = flattenedCerts.map((c: string) => (c && c.startsWith('/') && baseUrl) ? `${baseUrl}${c}` : c);
           plainUser.providerProfile.certificateUrls = mappedCerts;
           plainUser.providerProfile.certificateUrl = mappedCerts[0] || null;
         } catch {
@@ -270,12 +278,19 @@ function sanitizeUser(user: unknown, request?: any) {
           plainUser.providerProfile.certificateUrls = [updatedCert];
         }
       } else {
-        let updatedCert = cert;
-        if (cert.startsWith('/') && baseUrl) {
-          updatedCert = `${baseUrl}${cert}`;
+        if (cert.includes(',')) {
+          const certsArray = cert.split(',').map((item: string) => item.trim());
+          const mappedCerts = certsArray.map((c: string) => (c && c.startsWith('/') && baseUrl) ? `${baseUrl}${c}` : c);
+          plainUser.providerProfile.certificateUrls = mappedCerts;
+          plainUser.providerProfile.certificateUrl = mappedCerts[0] || null;
+        } else {
+          let updatedCert = cert;
+          if (cert.startsWith('/') && baseUrl) {
+            updatedCert = `${baseUrl}${cert}`;
+          }
+          plainUser.providerProfile.certificateUrl = updatedCert;
+          plainUser.providerProfile.certificateUrls = [updatedCert];
         }
-        plainUser.providerProfile.certificateUrl = updatedCert;
-        plainUser.providerProfile.certificateUrls = [updatedCert];
       }
     } else {
       plainUser.providerProfile.certificateUrls = [];
@@ -286,13 +301,29 @@ function sanitizeUser(user: unknown, request?: any) {
       if (lic.startsWith('[') && lic.endsWith(']')) {
         try {
           const licArray = JSON.parse(lic) as string[];
-          plainUser.providerProfile.licenseTypes = licArray;
-          plainUser.providerProfile.licenseType = licArray[0] || null;
+          const flattenedLics: string[] = [];
+          licArray.forEach((item: string) => {
+            if (item && item.includes(',')) {
+              flattenedLics.push(...item.split(',').map((s: string) => s.trim()));
+            } else if (item) {
+              flattenedLics.push(item);
+            }
+          });
+          plainUser.providerProfile.licenseTypes = flattenedLics;
+          plainUser.providerProfile.licenseType = flattenedLics[0] || null;
         } catch {
-          plainUser.providerProfile.licenseTypes = [lic];
+          if (lic.includes(',')) {
+            plainUser.providerProfile.licenseTypes = lic.split(',').map((item: string) => item.trim());
+          } else {
+            plainUser.providerProfile.licenseTypes = [lic];
+          }
         }
       } else {
-        plainUser.providerProfile.licenseTypes = [lic];
+        if (lic.includes(',')) {
+          plainUser.providerProfile.licenseTypes = lic.split(',').map((item: string) => item.trim());
+        } else {
+          plainUser.providerProfile.licenseTypes = [lic];
+        }
       }
     } else {
       plainUser.providerProfile.licenseTypes = [];
@@ -2279,9 +2310,21 @@ export async function POST(
         // Support single values if passed
         const singleLicenseType = formData.get('licenseType');
         if (rawLicenseNames.length === 0 && singleLicenseType) {
-          licenseNamesList.push(String(singleLicenseType));
+          const strType = String(singleLicenseType);
+          if (strType.includes(',')) {
+            licenseNamesList.push(...strType.split(',').map(s => s.trim()));
+          } else {
+            licenseNamesList.push(strType);
+          }
         } else {
-          licenseNamesList = rawLicenseNames.map((name: any) => String(name));
+          rawLicenseNames.forEach((name: any) => {
+            const strName = String(name);
+            if (strName.includes(',')) {
+              licenseNamesList.push(...strName.split(',').map(s => s.trim()));
+            } else {
+              licenseNamesList.push(strName);
+            }
+          });
         }
 
         const uploadDir = nodePath.join(process.cwd(), 'public', 'uploads');
@@ -2312,7 +2355,12 @@ export async function POST(
             await fs.writeFile(filePath, buffer);
             certificateUrls.push(`/uploads/${uniqueFileName}`);
           } else if (typeof certificate === 'string') {
-            certificateUrls.push(certificate);
+            const strCert = String(certificate);
+            if (strCert.includes(',')) {
+              certificateUrls.push(...strCert.split(',').map(s => s.trim()));
+            } else {
+              certificateUrls.push(strCert);
+            }
           }
         }
 
@@ -2322,7 +2370,11 @@ export async function POST(
         if (rawCertificateUrls.length > 0) {
           for (const url of rawCertificateUrls) {
             if (typeof url === 'string') {
-              certificateUrls.push(url);
+              if (url.includes(',')) {
+                certificateUrls.push(...url.split(',').map(s => s.trim()));
+              } else {
+                certificateUrls.push(url);
+              }
             }
           }
         }
@@ -2336,17 +2388,45 @@ export async function POST(
         const urls: string[] = [];
         for (const item of (body as any).licenses) {
           if (item && typeof item === 'object') {
-            names.push(item.licenseName || item.licenseType || '');
-            urls.push(item.certificateUrl || '');
+            const lName = item.licenseName || item.licenseType || '';
+            if (lName.includes(',')) {
+              names.push(...lName.split(',').map((s: string) => s.trim()));
+            } else {
+              names.push(lName);
+            }
+            
+            const cUrl = item.certificateUrl || '';
+            if (cUrl.includes(',')) {
+              urls.push(...cUrl.split(',').map((s: string) => s.trim()));
+            } else {
+              urls.push(cUrl);
+            }
           }
         }
-        licenseNamesList = names;
-        certificateUrls = urls;
+        licenseNamesList = names.filter(Boolean);
+        certificateUrls = urls.filter(Boolean);
       } else {
         const rawTypes = (body as any).licenseType;
-        licenseNamesList = Array.isArray(rawTypes) ? rawTypes : (rawTypes ? [rawTypes] : []);
+        const tempTypes = Array.isArray(rawTypes) ? rawTypes : (rawTypes ? [rawTypes] : []);
+        tempTypes.forEach((t: any) => {
+          const strT = String(t);
+          if (strT.includes(',')) {
+            licenseNamesList.push(...strT.split(',').map(s => s.trim()));
+          } else {
+            licenseNamesList.push(strT);
+          }
+        });
+
         const rawUrls = (body as any).certificateUrl;
-        certificateUrls = Array.isArray(rawUrls) ? rawUrls : (rawUrls ? [rawUrls] : []);
+        const tempUrls = Array.isArray(rawUrls) ? rawUrls : (rawUrls ? [rawUrls] : []);
+        tempUrls.forEach((u: any) => {
+          const strU = String(u);
+          if (strU.includes(',')) {
+            certificateUrls.push(...strU.split(',').map(s => s.trim()));
+          } else {
+            certificateUrls.push(strU);
+          }
+        });
       }
     }
 
@@ -2431,15 +2511,9 @@ export async function POST(
         }
       );
 
-      const sanitizedUserObj = sanitizeUser(dbUser, request);
-      if (sanitizedUserObj && sanitizedUserObj.providerProfile) {
-        await enrichProviderProfile(sanitizedUserObj.providerProfile, request);
-      }
       return NextResponse.json({
         success: true,
-        message: 'Licenses updated. Onboarding complete!',
-        profile: resProfile,
-        user: sanitizedUserObj
+        message: 'Licenses updated. Onboarding complete!'
       });
     } catch (err: any) {
       return NextResponse.json({ message: err.message || 'Failed to save licenses' }, { status: 400 });
