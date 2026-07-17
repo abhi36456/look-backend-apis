@@ -162,11 +162,11 @@ async function getAuthenticatedUser(request: Request) {
 function parseCsv(csvText: string): { title: string; icon?: string }[] {
   const lines = csvText.split(/\r?\n/);
   if (lines.length === 0) return [];
-  
+
   const headers = lines[0].split(',').map((h) => h.trim().toLowerCase());
   const titleIndex = headers.indexOf('title');
   const iconIndex = headers.indexOf('icon');
-  
+
   if (titleIndex === -1) {
     throw new Error('CSV must contain a "title" column');
   }
@@ -175,7 +175,7 @@ function parseCsv(csvText: string): { title: string; icon?: string }[] {
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
-    
+
     const cols: string[] = [];
     let current = '';
     let inQuotes = false;
@@ -235,6 +235,75 @@ function sanitizeUser(user: unknown, request?: any) {
 
   const baseUrl = getBaseUrl(request);
 
+  if (plainUser.providerProfile && typeof plainUser.providerProfile === 'object') {
+    // Parse categories if stringified
+    const cats = plainUser.providerProfile.categories;
+    if (typeof cats === 'string') {
+      try {
+        plainUser.providerProfile.categories = JSON.parse(cats);
+      } catch {
+        plainUser.providerProfile.categories = [];
+      }
+    } else if (!cats) {
+      plainUser.providerProfile.categories = [];
+    }
+
+    // Process certificates and license types (supporting single values & arrays)
+    const cert = plainUser.providerProfile.certificateUrl;
+    if (cert) {
+      if (cert.startsWith('[') && cert.endsWith(']')) {
+        try {
+          const certsArray = JSON.parse(cert) as string[];
+          const mappedCerts = certsArray.map(c => (c && c.startsWith('/') && baseUrl) ? `${baseUrl}${c}` : c);
+          plainUser.providerProfile.certificateUrls = mappedCerts;
+          plainUser.providerProfile.certificateUrl = mappedCerts[0] || null;
+        } catch {
+          let updatedCert = cert;
+          if (cert.startsWith('/') && baseUrl) {
+            updatedCert = `${baseUrl}${cert}`;
+          }
+          plainUser.providerProfile.certificateUrl = updatedCert;
+          plainUser.providerProfile.certificateUrls = [updatedCert];
+        }
+      } else {
+        let updatedCert = cert;
+        if (cert.startsWith('/') && baseUrl) {
+          updatedCert = `${baseUrl}${cert}`;
+        }
+        plainUser.providerProfile.certificateUrl = updatedCert;
+        plainUser.providerProfile.certificateUrls = [updatedCert];
+      }
+    } else {
+      plainUser.providerProfile.certificateUrls = [];
+    }
+
+    const lic = plainUser.providerProfile.licenseType;
+    if (lic) {
+      if (lic.startsWith('[') && lic.endsWith(']')) {
+        try {
+          const licArray = JSON.parse(lic) as string[];
+          plainUser.providerProfile.licenseTypes = licArray;
+          plainUser.providerProfile.licenseType = licArray[0] || null;
+        } catch {
+          plainUser.providerProfile.licenseTypes = [lic];
+        }
+      } else {
+        plainUser.providerProfile.licenseTypes = [lic];
+      }
+    } else {
+      plainUser.providerProfile.licenseTypes = [];
+    }
+
+    const img = plainUser.providerProfile.profileImageUrl;
+    if (baseUrl && img && img.startsWith('/')) {
+      plainUser.providerProfile.profileImageUrl = `${baseUrl}${img}`;
+    }
+    const cover = plainUser.providerProfile.coverImageUrl;
+    if (baseUrl && cover && cover.startsWith('/')) {
+      plainUser.providerProfile.coverImageUrl = `${baseUrl}${cover}`;
+    }
+  }
+
   if (baseUrl) {
     if (plainUser.clientProfile && typeof plainUser.clientProfile === 'object') {
       const img = plainUser.clientProfile.profileImageUrl;
@@ -242,23 +311,98 @@ function sanitizeUser(user: unknown, request?: any) {
         plainUser.clientProfile.profileImageUrl = `${baseUrl}${img}`;
       }
     }
-    if (plainUser.providerProfile && typeof plainUser.providerProfile === 'object') {
-      const img = plainUser.providerProfile.profileImageUrl;
-      if (img && img.startsWith('/')) {
-        plainUser.providerProfile.profileImageUrl = `${baseUrl}${img}`;
-      }
-      const cover = plainUser.providerProfile.coverImageUrl;
-      if (cover && cover.startsWith('/')) {
-        plainUser.providerProfile.coverImageUrl = `${baseUrl}${cover}`;
-      }
-      const cert = plainUser.providerProfile.certificateUrl;
-      if (cert && cert.startsWith('/')) {
-        plainUser.providerProfile.certificateUrl = `${baseUrl}${cert}`;
-      }
-    }
   }
 
   return plainUser;
+}
+
+async function enrichProviderProfile(providerProfile: any, request?: any) {
+  if (!providerProfile) return;
+
+  const baseUrl = getBaseUrl(request);
+
+  let categorySettings = [
+    { id: 1, title: 'Haircut' },
+    { id: 2, title: 'Beard' },
+    { id: 3, title: 'Hair Color' },
+  ];
+  let serviceSettings = [
+    { id: 1, title: 'Classic cut', mainType: { title: 'Haircut' } },
+    { id: 2, title: 'Skin fade', mainType: { title: 'Haircut' } },
+    { id: 3, title: 'Beard trim', mainType: { title: 'Beard' } },
+  ] as any[];
+  let ambienceSettings = [
+    { id: 1, title: 'Free Wi-Fi', ambienceGroup: { title: 'Amenities' } },
+    { id: 2, title: 'Parking', ambienceGroup: { title: 'Amenities' } },
+    { id: 3, title: 'Quiet Space', ambienceGroup: { title: 'Ambience' } },
+    { id: 4, title: 'Relaxing Music', ambienceGroup: { title: 'Ambience' } },
+  ] as any[];
+
+  try {
+    const dbCats = await prisma.categorySetting.findMany().catch(() => null);
+    if (dbCats) categorySettings = dbCats;
+
+    const dbSvcs = await prisma.serviceSetting.findMany({ include: { mainType: true } }).catch(() => null);
+    if (dbSvcs) serviceSettings = dbSvcs;
+
+    const dbAmbs = await prisma.ambienceSetting.findMany({ include: { ambienceGroup: true } }).catch(() => null);
+    if (dbAmbs) ambienceSettings = dbAmbs;
+  } catch {}
+
+  // 1. Enrich categories: map IDs like 1, 2 to { id: 1, title: "Haircut" }
+  let categoryIds = [];
+  if (typeof providerProfile.categories === 'string') {
+    try {
+      categoryIds = JSON.parse(providerProfile.categories);
+    } catch {
+      categoryIds = [];
+    }
+  } else if (Array.isArray(providerProfile.categories)) {
+    categoryIds = providerProfile.categories;
+  }
+
+  providerProfile.categories = categoryIds.map((cat: any) => {
+    const match = categorySettings.find(c => c.id === Number(cat) || c.title.toLowerCase() === String(cat).toLowerCase());
+    return match ? { id: match.id, title: match.title } : { id: typeof cat === 'number' ? cat : 0, title: String(cat) };
+  });
+
+  // 2. Enrich services: map to original ServiceSetting ID
+  if (Array.isArray(providerProfile.services)) {
+    providerProfile.services = providerProfile.services.map((s: any) => {
+      const match = serviceSettings.find(item => 
+        item.title.toLowerCase() === s.name.toLowerCase() && 
+        (item.mainType ? item.mainType.title.toLowerCase() === s.category.toLowerCase() : true)
+      );
+      return {
+        id: s.id,
+        serviceId: match ? match.id : null,
+        name: s.name,
+        price: s.price,
+        category: s.category
+      };
+    });
+  }
+
+  // 3. Enrich amenities: map to original AmbienceSetting ID and prefix icon with baseUrl
+  if (Array.isArray(providerProfile.amenities)) {
+    providerProfile.amenities = providerProfile.amenities.map((am: any) => {
+      const match = ambienceSettings.find(item => 
+        item.title.toLowerCase() === am.name.toLowerCase() && 
+        (item.ambienceGroup ? item.ambienceGroup.title.toLowerCase() === am.type.toLowerCase() : true)
+      );
+      let icon = am.icon || (match ? match.icon : null);
+      if (baseUrl && icon && icon.startsWith('/')) {
+        icon = `${baseUrl}${icon}`;
+      }
+      return {
+        id: am.id,
+        amenityId: match ? match.id : null,
+        name: am.name,
+        type: am.type,
+        icon: icon
+      };
+    });
+  }
 }
 
 // ROUTE HANDLERS
@@ -270,8 +414,8 @@ export async function GET(
   const path = catchall?.join('/') || '';
   console.log(`[API GET] /api/${path}`);
 
-  // 1. Fetch client profile (/api/clients/me)
-  if (path === 'clients/me') {
+  // 1. Fetch client profile (/api/clients/me or /api/client/me)
+  if (path === 'clients/me' || path === 'client/me') {
     const auth = await getAuthenticatedUser(request);
     if (!auth) {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
@@ -292,7 +436,8 @@ export async function GET(
       async () => {
         const user = mockDb.users.find((u) => u.id === auth.userId);
         if (!user) return null;
-        return { ...user };
+        const clientProfile = mockDb.profiles.find((p) => p.userId === auth.userId) || null;
+        return { ...user, clientProfile };
       }
     );
 
@@ -302,8 +447,8 @@ export async function GET(
     return NextResponse.json(sanitizeUser(userData, request));
   }
 
-  // 1b. Fetch provider profile (/api/providers/me)
-  if (path === 'providers/me') {
+  // 1b. Fetch provider profile (/api/providers/me or /api/provider/me)
+  if (path === 'providers/me' || path === 'provider/me') {
     const auth = await getAuthenticatedUser(request);
     if (!auth) {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
@@ -342,7 +487,11 @@ export async function GET(
     if (!userData) {
       return NextResponse.json({ message: 'User not found' }, { status: 404 });
     }
-    return NextResponse.json(sanitizeUser(userData, request));
+    const sanitized = sanitizeUser(userData, request);
+    if (sanitized && sanitized.providerProfile) {
+      await enrichProviderProfile(sanitized.providerProfile, request);
+    }
+    return NextResponse.json(sanitized);
   }
 
   // Twilio settings (/api/admin/settings/twilio)
@@ -442,6 +591,11 @@ export async function GET(
     );
 
     const sanitizedUsers = (usersList as any[] || []).map((u) => sanitizeUser(u, request));
+    for (const u of sanitizedUsers) {
+      if (u && u.providerProfile) {
+        await enrichProviderProfile(u.providerProfile, request);
+      }
+    }
     return NextResponse.json(sanitizedUsers);
   }
 
@@ -542,6 +696,27 @@ export async function GET(
         ];
       }
     );
+
+    if (path === 'provider/setup/services') {
+      // Group by mainType/category
+      const groups: { [key: string]: any[] } = {};
+      list.forEach((item: any) => {
+        const cat = item.mainType || 'General';
+        if (!groups[cat]) {
+          groups[cat] = [];
+        }
+        groups[cat].push({
+          id: item.id,
+          title: item.title
+        });
+      });
+      const groupedList = Object.keys(groups).map(category => ({
+        category,
+        services: groups[category]
+      }));
+      return NextResponse.json(groupedList);
+    }
+
     return NextResponse.json(list);
   }
 
@@ -744,6 +919,7 @@ export async function POST(
               providerProfile: {
                 include: { services: true, amenities: true },
               },
+              clientProfile: true,
             },
           });
           if (!user || user.password !== hashPassword(password)) throw new Error('Invalid credentials');
@@ -779,20 +955,29 @@ export async function POST(
           const token = generateToken(user.id, user.email, user.role);
           const profile = mockDb.profiles.find((p) => p.userId === user.id);
           let providerProfile = undefined;
+          let clientProfile = undefined;
           if (profile) {
-            providerProfile = {
-              ...profile,
-              services: mockDb.services.filter((s) => s.profileId === profile.id),
-              amenities: mockDb.amenities.filter((a) => a.profileId === profile.id),
-            };
+            if (user.role === 'provider') {
+              providerProfile = {
+                ...profile,
+                services: mockDb.services.filter((s) => s.profileId === profile.id),
+                amenities: mockDb.amenities.filter((a) => a.profileId === profile.id),
+              };
+            } else if (user.role === 'client') {
+              clientProfile = { ...profile };
+            }
           }
-          return { token, user: { ...user, providerProfile } };
+          return { token, user: { ...user, providerProfile, clientProfile } };
         }
       );
       const responseObj = response as { token: string; user: any };
+      const sanitized = sanitizeUser(responseObj.user, request);
+      if (sanitized && sanitized.providerProfile) {
+        await enrichProviderProfile(sanitized.providerProfile, request);
+      }
       return NextResponse.json({
         token: responseObj.token,
-        user: sanitizeUser(responseObj.user, request),
+        user: sanitized,
       });
     } catch (err: any) {
       return NextResponse.json({ message: err.message || 'Login failed' }, { status: 400 });
@@ -956,9 +1141,13 @@ export async function POST(
       );
 
       const responseObj = response as { token: string; user: any };
+      const sanitized = sanitizeUser(responseObj.user, request);
+      if (sanitized && sanitized.providerProfile) {
+        await enrichProviderProfile(sanitized.providerProfile, request);
+      }
       return NextResponse.json({
         token: responseObj.token,
-        user: sanitizeUser(responseObj.user, request),
+        user: sanitized,
       });
     } catch (err: any) {
       return NextResponse.json({ message: err.message || 'Social login failed' }, { status: 400 });
@@ -967,32 +1156,28 @@ export async function POST(
 
   // 4. Forgot Password send OTP (/api/auth/forgot-password/send-otp)
   if (path === 'auth/forgot-password/send-otp') {
-    const { email } = body as any;
-    if (!email) {
-      return NextResponse.json({ message: 'Email is required' }, { status: 400 });
+    const { phoneNumber } = body as any;
+    if (!phoneNumber) {
+      return NextResponse.json({ message: 'Phone number is required' }, { status: 400 });
     }
 
     try {
       const user = await executeWithDbFallback(
         async () => {
-          return await prisma.user.findUnique({ where: { email } });
+          return await prisma.user.findUnique({ where: { phoneNumber } });
         },
         async () => {
-          return mockDb.users.find((u) => u.email === email) || null;
+          return mockDb.users.find((u) => u.phoneNumber === phoneNumber) || null;
         }
       );
 
       if (!user) {
-        return NextResponse.json({ message: 'No registered user found with this email address' }, { status: 404 });
-      }
-
-      if (!user.phoneNumber) {
-        return NextResponse.json({ message: 'No verified phone number found for this account' }, { status: 400 });
+        return NextResponse.json({ message: 'No registered user found with this phone number' }, { status: 404 });
       }
 
       // Generate a random 6-digit OTP
       const otp = Math.floor(100000 + Math.random() * 900000).toString();
-      otpStore.set('forgot-password:' + email, { code: otp, exp: Date.now() + 1000 * 60 * 10 }); // 10 minutes expiry
+      otpStore.set('forgot-password:' + phoneNumber, { code: otp, exp: Date.now() + 1000 * 60 * 10 }); // 10 minutes expiry
 
       // Retrieve active Twilio connection config
       const twilioSettings = await executeWithDbFallback(
@@ -1032,7 +1217,7 @@ export async function POST(
       } else {
         params.append('From', cleanFromNumber);
       }
-      params.append('To', user.phoneNumber);
+      params.append('To', phoneNumber);
       params.append('Body', messageBody);
 
       const twilioRes = await fetch(twilioUrl, {
@@ -1067,17 +1252,17 @@ export async function POST(
 
   // 5. Forgot Password verify OTP (/api/auth/forgot-password/verify-otp)
   if (path === 'auth/forgot-password/verify-otp') {
-    const { email, code } = body as any;
-    if (!email || !code) {
-      return NextResponse.json({ message: 'Email and verification code are required' }, { status: 400 });
+    const { phoneNumber, code } = body as any;
+    if (!phoneNumber || !code) {
+      return NextResponse.json({ message: 'Phone number and verification code are required' }, { status: 400 });
     }
 
     const user = await executeWithDbFallback(
       async () => {
-        return await prisma.user.findUnique({ where: { email } });
+        return await prisma.user.findUnique({ where: { phoneNumber } });
       },
       async () => {
-        return mockDb.users.find((u) => u.email === email) || null;
+        return mockDb.users.find((u) => u.phoneNumber === phoneNumber) || null;
       }
     );
 
@@ -1086,16 +1271,16 @@ export async function POST(
     }
 
     // Verify OTP using cache store
-    const record = otpStore.get('forgot-password:' + email);
+    const record = otpStore.get('forgot-password:' + phoneNumber);
     if (!record || record.code !== code || record.exp < Date.now()) {
       return NextResponse.json({ message: 'Invalid or expired verification code' }, { status: 400 });
     }
 
     // Clear OTP after successful verification
-    otpStore.delete('forgot-password:' + email);
+    otpStore.delete('forgot-password:' + phoneNumber);
 
     // Generate short-lived reset token (15 mins)
-    const resetToken = generateResetToken(user.id, user.email);
+    const resetToken = generateResetToken(user.id, user.phoneNumber || user.email || '');
 
     return NextResponse.json({ success: true, token: resetToken, message: 'OTP verified successfully' });
   }
@@ -1844,7 +2029,7 @@ export async function POST(
         }
       }
 
-      return NextResponse.json({ success: true, profile: resProfile });
+      return NextResponse.json({ success: true, message: 'Profile setup completed successfully' });
     } catch (err: any) {
       return NextResponse.json({ message: err.message || 'Failed to update profile' }, { status: 400 });
     }
@@ -1891,7 +2076,7 @@ export async function POST(
           return mockProfile;
         }
       );
-      return NextResponse.json({ success: true, categories: JSON.parse(profile.categories || '[]') });
+      return NextResponse.json({ success: true, message: 'Categories setup completed successfully' });
     } catch (err: any) {
       return NextResponse.json({ message: err.message || 'Failed to save categories' }, { status: 400 });
     }
@@ -1919,7 +2104,7 @@ export async function POST(
           }
           // Clear current services
           await prisma.providerService.deleteMany({ where: { profileId: profile.id } });
-          
+
           // Look up corresponding ServiceSetting names and categories
           const serviceIds = services.map((s: any) => parseInt(s.service_id || s.serviceId)).filter(Boolean);
           const serviceSettings = await prisma.serviceSetting.findMany({
@@ -2061,57 +2246,107 @@ export async function POST(
     }
 
     let experience: any = null;
-    let licenseType: any = null;
-    let certificateUrl: any = null;
+    let licenseNamesList: string[] = [];
+    let certificateUrls: string[] = [];
 
     const contentType = request.headers.get('content-type') || '';
     if (contentType.includes('multipart/form-data')) {
       try {
         const formData = await request.formData();
         experience = formData.get('experience');
-        licenseType = formData.get('licenseType');
-        const certificate = formData.get('certificate');
 
-        if (certificate && typeof certificate === 'object' && 'name' in certificate) {
-          const file = certificate as any;
-          const mimeType = file.type || '';
-          const fileName = file.name || '';
-          const fileExt = nodePath.extname(fileName).toLowerCase();
+        // Support multiple license names and certificates
+        const rawLicenseNames = formData.getAll('licenseName').length > 0
+          ? formData.getAll('licenseName')
+          : (formData.getAll('licenseType').length > 0
+            ? formData.getAll('licenseType')
+            : formData.getAll('licenseNames'));
 
-          const isValidMime = mimeType === 'application/pdf' || mimeType.startsWith('image/');
-          const isValidExt = ['.pdf', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff'].includes(fileExt);
+        const rawCertificates = formData.getAll('certificate').length > 0
+          ? formData.getAll('certificate')
+          : formData.getAll('certificates');
 
-          if (!isValidMime && !isValidExt) {
-            return NextResponse.json(
-              { message: 'Certificate must be a PDF or an image file only' },
-              { status: 400 }
-            );
+        // Support single values if passed
+        const singleLicenseType = formData.get('licenseType');
+        if (rawLicenseNames.length === 0 && singleLicenseType) {
+          licenseNamesList.push(String(singleLicenseType));
+        } else {
+          licenseNamesList = rawLicenseNames.map((name: any) => String(name));
+        }
+
+        const uploadDir = nodePath.join(process.cwd(), 'public', 'uploads');
+        await fs.mkdir(uploadDir, { recursive: true });
+
+        for (let i = 0; i < rawCertificates.length; i++) {
+          const certificate = rawCertificates[i];
+          if (certificate && typeof certificate === 'object' && 'name' in certificate) {
+            const file = certificate as any;
+            const mimeType = file.type || '';
+            const fileName = file.name || '';
+            const fileExt = nodePath.extname(fileName).toLowerCase();
+
+            const isValidMime = mimeType === 'application/pdf' || mimeType.startsWith('image/');
+            const isValidExt = ['.pdf', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff'].includes(fileExt);
+
+            if (!isValidMime && !isValidExt) {
+              return NextResponse.json(
+                { message: 'Certificate must be a PDF or an image file only' },
+                { status: 400 }
+              );
+            }
+
+            const bytes = await file.arrayBuffer();
+            const buffer = Buffer.from(bytes);
+            const uniqueFileName = `certificate_${auth.userId}_${Date.now()}_${i}${fileExt || '.pdf'}`;
+            const filePath = nodePath.join(uploadDir, uniqueFileName);
+            await fs.writeFile(filePath, buffer);
+            certificateUrls.push(`/uploads/${uniqueFileName}`);
+          } else if (typeof certificate === 'string') {
+            certificateUrls.push(certificate);
           }
+        }
 
-          const bytes = await file.arrayBuffer();
-          const buffer = Buffer.from(bytes);
-          const uploadDir = nodePath.join(process.cwd(), 'public', 'uploads');
-          await fs.mkdir(uploadDir, { recursive: true });
-          const uniqueFileName = `certificate_${auth.userId}_${Date.now()}${fileExt || '.pdf'}`;
-          const filePath = nodePath.join(uploadDir, uniqueFileName);
-          await fs.writeFile(filePath, buffer);
-          certificateUrl = `/uploads/${uniqueFileName}`;
-        } else if (typeof certificate === 'string') {
-          certificateUrl = certificate;
+        const rawCertificateUrls = formData.getAll('certificateUrl').length > 0
+          ? formData.getAll('certificateUrl')
+          : formData.getAll('certificateUrls');
+        if (rawCertificateUrls.length > 0) {
+          for (const url of rawCertificateUrls) {
+            if (typeof url === 'string') {
+              certificateUrls.push(url);
+            }
+          }
         }
       } catch (err: any) {
         return NextResponse.json({ message: 'Failed to process file upload: ' + err.message }, { status: 400 });
       }
     } else {
       experience = (body as any).experience;
-      licenseType = (body as any).licenseType;
-      certificateUrl = (body as any).certificateUrl;
+      if (Array.isArray((body as any).licenses)) {
+        const names: string[] = [];
+        const urls: string[] = [];
+        for (const item of (body as any).licenses) {
+          if (item && typeof item === 'object') {
+            names.push(item.licenseName || item.licenseType || '');
+            urls.push(item.certificateUrl || '');
+          }
+        }
+        licenseNamesList = names;
+        certificateUrls = urls;
+      } else {
+        const rawTypes = (body as any).licenseType;
+        licenseNamesList = Array.isArray(rawTypes) ? rawTypes : (rawTypes ? [rawTypes] : []);
+        const rawUrls = (body as any).certificateUrl;
+        certificateUrls = Array.isArray(rawUrls) ? rawUrls : (rawUrls ? [rawUrls] : []);
+      }
     }
 
     try {
       const response = await executeWithDbFallback(
         async () => {
           let profile = await prisma.providerProfile.findUnique({ where: { userId: auth.userId } });
+          const storedLicenseType = licenseNamesList.length > 0 ? JSON.stringify(licenseNamesList) : (profile?.licenseType || null);
+          const storedCertificateUrl = certificateUrls.length > 0 ? JSON.stringify(certificateUrls) : (profile?.certificateUrl || null);
+
           if (!profile) {
             profile = await prisma.providerProfile.create({
               data: {
@@ -2119,14 +2354,18 @@ export async function POST(
                 name: '',
                 location: '',
                 experience: parseInt(experience) || 0,
-                licenseType,
-                certificateUrl
+                licenseType: storedLicenseType,
+                certificateUrl: storedCertificateUrl
               }
             });
           } else {
             profile = await prisma.providerProfile.update({
               where: { userId: auth.userId },
-              data: { experience: parseInt(experience) || 0, licenseType, certificateUrl },
+              data: {
+                experience: parseInt(experience) || 0,
+                licenseType: storedLicenseType,
+                certificateUrl: storedCertificateUrl
+              },
             });
           }
           await prisma.user.update({
@@ -2142,8 +2381,8 @@ export async function POST(
             mockDb.profiles.push(mockProfile);
           }
           mockProfile.experience = parseInt(experience) || 0;
-          mockProfile.licenseType = licenseType || null;
-          mockProfile.certificateUrl = certificateUrl || null;
+          mockProfile.licenseType = licenseNamesList.length > 0 ? JSON.stringify(licenseNamesList) : (mockProfile.licenseType || null);
+          mockProfile.certificateUrl = certificateUrls.length > 0 ? JSON.stringify(certificateUrls) : (mockProfile.certificateUrl || null);
 
           const mockUser = mockDb.users.find((u) => u.id === auth.userId);
           if (mockUser) mockUser.onboardingCompleted = true;
@@ -2157,7 +2396,41 @@ export async function POST(
         resProfile.certificateUrl = `${baseUrl}${resProfile.certificateUrl}`;
       }
 
-      return NextResponse.json({ success: true, message: 'Licenses updated. Onboarding complete!', profile: resProfile });
+      // Fetch the updated user object with relations
+      const dbUser = await executeWithDbFallback(
+        async () => {
+          return await prisma.user.findUnique({
+            where: { id: auth.userId },
+            include: {
+              providerProfile: { include: { services: true, amenities: true } }
+            }
+          });
+        },
+        async () => {
+          const u = mockDb.users.find((user) => user.id === auth.userId);
+          const p = mockDb.profiles.find((profile) => profile.userId === auth.userId);
+          let providerProfile = undefined;
+          if (p) {
+            providerProfile = {
+              ...p,
+              services: mockDb.services.filter((s) => s.profileId === p.id),
+              amenities: mockDb.amenities.filter((a) => a.profileId === p.id),
+            };
+          }
+          return { ...u, providerProfile };
+        }
+      );
+
+      const sanitizedUserObj = sanitizeUser(dbUser, request);
+      if (sanitizedUserObj && sanitizedUserObj.providerProfile) {
+        await enrichProviderProfile(sanitizedUserObj.providerProfile, request);
+      }
+      return NextResponse.json({
+        success: true,
+        message: 'Licenses updated. Onboarding complete!',
+        profile: resProfile,
+        user: sanitizedUserObj
+      });
     } catch (err: any) {
       return NextResponse.json({ message: err.message || 'Failed to save licenses' }, { status: 400 });
     }
@@ -2247,13 +2520,11 @@ export async function PUT(
       profileImageUrl = body.profileImageUrl;
     }
 
-    // Automatically set onboardingCompleted to true if the client sends: name, location, latitude, and longitude
+    // Automatically set onboardingCompleted to true if the client sends: name and location
     const hasName = name !== undefined && name !== null && String(name).trim() !== '';
     const hasLocation = location !== undefined && location !== null && String(location).trim() !== '';
-    const hasLatitude = latitude !== undefined && latitude !== null && String(latitude).trim() !== '';
-    const hasLongitude = longitude !== undefined && longitude !== null && String(longitude).trim() !== '';
 
-    const autoOnboardingCompleted = hasName && hasLocation && hasLatitude && hasLongitude;
+    const autoOnboardingCompleted = hasName && hasLocation;
 
     const updatedUser = await executeWithDbFallback(
       async () => {
@@ -2310,10 +2581,180 @@ export async function PUT(
     );
 
     const sanitized = sanitizeUser(updatedUser, request);
-    if (sanitized && typeof sanitized === 'object') {
-      delete (sanitized as any).onboardingCompleted;
-    }
     return NextResponse.json(sanitized);
+  }
+
+  // Update Provider Profile (/api/providers/profile)
+  if (path === 'providers/profile') {
+    if (auth.role !== 'provider') {
+      return NextResponse.json({ message: 'Forbidden: Requires provider role' }, { status: 403 });
+    }
+
+    const { providerProfile, onboardingCompleted } = body as any;
+    if (!providerProfile) {
+      return NextResponse.json({ message: 'providerProfile is required' }, { status: 400 });
+    }
+
+    const {
+      name,
+      location,
+      categories,
+      services,
+      amenities,
+      experience,
+      licenseType,
+      certificateUrl,
+      coverImageUrl,
+      latitude,
+      longitude
+    } = providerProfile;
+
+    try {
+      const updatedUser = await executeWithDbFallback(
+        async () => {
+          // 1. Upsert provider profile
+          const profile = await prisma.providerProfile.upsert({
+            where: { userId: auth.userId },
+            update: {
+              name: name || '',
+              location: location || '',
+              categories: categories ? JSON.stringify(categories) : null,
+              experience: parseInt(experience) || 0,
+              licenseType: licenseType ? (Array.isArray(licenseType) ? JSON.stringify(licenseType) : licenseType) : null,
+              certificateUrl: certificateUrl ? (Array.isArray(certificateUrl) ? JSON.stringify(certificateUrl) : certificateUrl) : null,
+              coverImageUrl: coverImageUrl || null,
+              latitude: latitude !== undefined && latitude !== null ? parseFloat(latitude) : null,
+              longitude: longitude !== undefined && longitude !== null ? parseFloat(longitude) : null
+            },
+            create: {
+              userId: auth.userId,
+              name: name || '',
+              location: location || '',
+              categories: categories ? JSON.stringify(categories) : null,
+              experience: parseInt(experience) || 0,
+              licenseType: licenseType ? (Array.isArray(licenseType) ? JSON.stringify(licenseType) : licenseType) : null,
+              certificateUrl: certificateUrl ? (Array.isArray(certificateUrl) ? JSON.stringify(certificateUrl) : certificateUrl) : null,
+              coverImageUrl: coverImageUrl || null,
+              latitude: latitude !== undefined && latitude !== null ? parseFloat(latitude) : null,
+              longitude: longitude !== undefined && longitude !== null ? parseFloat(longitude) : null
+            }
+          });
+
+          // 2. Clear and recreate services if provided
+          if (Array.isArray(services)) {
+            await prisma.providerService.deleteMany({ where: { profileId: profile.id } });
+            if (services.length > 0) {
+              const servicesToInsert = services.map((s: any) => ({
+                profileId: profile.id,
+                name: s.name,
+                price: parseInt(s.price) || 0,
+                category: s.category || 'General'
+              }));
+              await prisma.providerService.createMany({ data: servicesToInsert });
+            }
+          }
+
+          // 3. Clear and recreate amenities if provided
+          if (Array.isArray(amenities)) {
+            await prisma.providerAmenity.deleteMany({ where: { profileId: profile.id } });
+            if (amenities.length > 0) {
+              const amenitiesToInsert = amenities.map((am: any) => {
+                const isObject = am && typeof am === 'object';
+                const amName = isObject ? (am.name || '') : String(am);
+                const amType = isObject ? (am.type || 'amenity') : 'amenity';
+                const amIcon = isObject ? (am.icon || null) : null;
+                return {
+                  profileId: profile.id,
+                  name: amName,
+                  type: amType,
+                  icon: amIcon
+                };
+              });
+              await prisma.providerAmenity.createMany({ data: amenitiesToInsert });
+            }
+          }
+
+          // 4. Update onboardingCompleted on User table
+          return await prisma.user.update({
+            where: { id: auth.userId },
+            data: {
+              onboardingCompleted: onboardingCompleted !== undefined ? onboardingCompleted : true
+            },
+            include: {
+              providerProfile: {
+                include: { services: true, amenities: true }
+              }
+            }
+          });
+        },
+        async () => {
+          // Mock fallback
+          const user = mockDb.users.find((u) => u.id === auth.userId);
+          if (!user) throw new Error('User not found');
+          user.onboardingCompleted = onboardingCompleted !== undefined ? onboardingCompleted : true;
+
+          let profile = mockDb.profiles.find((p) => p.userId === auth.userId);
+          if (!profile) {
+            profile = { id: mockDb.profiles.length + 1, userId: auth.userId };
+            mockDb.profiles.push(profile);
+          }
+
+          profile.name = name || '';
+          profile.location = location || '';
+          profile.categories = categories ? JSON.stringify(categories) : null;
+          profile.experience = parseInt(experience) || 0;
+          profile.licenseType = licenseType ? (Array.isArray(licenseType) ? JSON.stringify(licenseType) : licenseType) : null;
+          profile.certificateUrl = certificateUrl ? (Array.isArray(certificateUrl) ? JSON.stringify(certificateUrl) : certificateUrl) : null;
+          profile.coverImageUrl = coverImageUrl || null;
+          profile.latitude = latitude !== undefined && latitude !== null ? parseFloat(latitude) : null;
+          profile.longitude = longitude !== undefined && longitude !== null ? parseFloat(longitude) : null;
+
+          if (Array.isArray(services)) {
+            mockDb.services = mockDb.services.filter((s) => s.profileId !== profile.id);
+            services.forEach((s: any) => {
+              mockDb.services.push({
+                id: Math.floor(Math.random() * 10000),
+                profileId: profile.id,
+                name: s.name,
+                price: parseInt(s.price) || 0,
+                category: s.category || 'General'
+              });
+            });
+          }
+
+          if (Array.isArray(amenities)) {
+            mockDb.amenities = mockDb.amenities.filter((a) => a.profileId !== profile.id);
+            amenities.forEach((am: any) => {
+              const isObject = am && typeof am === 'object';
+              const amName = isObject ? (am.name || '') : String(am);
+              mockDb.amenities.push({
+                id: Math.floor(Math.random() * 10000),
+                profileId: profile.id,
+                name: amName,
+                type: isObject ? (am.type || 'amenity') : 'amenity',
+                icon: isObject ? (am.icon || null) : null
+              });
+            });
+          }
+
+          const providerProfile = {
+            ...profile,
+            services: mockDb.services.filter((s) => s.profileId === profile.id),
+            amenities: mockDb.amenities.filter((a) => a.profileId === profile.id)
+          };
+
+          return { ...user, providerProfile };
+        }
+      );
+
+      const sanitized = sanitizeUser(updatedUser, request);
+      if (sanitized && sanitized.providerProfile) {
+        await enrichProviderProfile(sanitized.providerProfile, request);
+      }
+      return NextResponse.json(sanitized);
+    } catch (err: any) {
+      return NextResponse.json({ message: err.message || 'Failed to update provider profile' }, { status: 400 });
+    }
   }
 
 
@@ -2336,8 +2777,8 @@ export async function DELETE(
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
   }
 
-  // 1. Client Deletes Their Own Account (/api/clients/me)
-  if (path === 'clients/me') {
+  // 1. Client Deletes Their Own Account (/api/clients/me or /api/client/me)
+  if (path === 'clients/me' || path === 'client/me') {
     if (auth.role !== 'client') {
       return NextResponse.json({ message: 'Forbidden: Requires client role' }, { status: 403 });
     }
@@ -2366,8 +2807,8 @@ export async function DELETE(
     }
   }
 
-  // 1b. Provider Deletes Their Own Account (/api/providers/me)
-  if (path === 'providers/me') {
+  // 1b. Provider Deletes Their Own Account (/api/providers/me or /api/provider/me)
+  if (path === 'providers/me' || path === 'provider/me') {
     if (auth.role !== 'provider') {
       return NextResponse.json({ message: 'Forbidden: Requires provider role' }, { status: 403 });
     }

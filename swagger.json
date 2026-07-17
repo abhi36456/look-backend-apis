@@ -1020,14 +1020,24 @@
                     "type": "integer",
                     "example": 8
                   },
-                  "licenseType": {
-                    "type": "string",
-                    "example": "Cosmetology License"
+                  "licenseName": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "List of license names/types (e.g. Cosmetology License, Barber License)",
+                    "example": [
+                      "Cosmetology License",
+                      "Barber License"
+                    ]
                   },
                   "certificate": {
-                    "type": "string",
-                    "format": "binary",
-                    "description": "Upload certificate (PDF or Image only)"
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    },
+                    "description": "Uploaded certificate files (PDF or Image only)"
                   }
                 }
               }
@@ -1043,13 +1053,51 @@
                     "type": "integer",
                     "example": 8
                   },
+                  "licenses": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "licenseName": {
+                          "type": "string",
+                          "example": "Cosmetology License"
+                        },
+                        "certificateUrl": {
+                          "type": "string",
+                          "example": "https://..."
+                        }
+                      }
+                    },
+                    "example": [
+                      {
+                        "licenseName": "Cosmetology License",
+                        "certificateUrl": "https://..."
+                      },
+                      {
+                        "licenseName": "Barber License",
+                        "certificateUrl": "https://..."
+                      }
+                    ]
+                  },
                   "licenseType": {
-                    "type": "string",
-                    "example": "Cosmetology License"
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "example": [
+                      "Cosmetology License",
+                      "Barber License"
+                    ]
                   },
                   "certificateUrl": {
-                    "type": "string",
-                    "example": "https://..."
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "example": [
+                      "https://...",
+                      "https://..."
+                    ]
                   }
                 }
               }

@@ -720,8 +720,17 @@ const openApiSpec = {
                 required: ['experience'],
                 properties: {
                   experience: { type: 'integer', example: 8 },
-                  licenseType: { type: 'string', example: 'Cosmetology License' },
-                  certificate: { type: 'string', format: 'binary', description: 'Upload certificate (PDF or Image only)' },
+                  licenseName: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'List of license names/types (e.g. Cosmetology License, Barber License)',
+                    example: ['Cosmetology License', 'Barber License']
+                  },
+                  certificate: {
+                    type: 'array',
+                    items: { type: 'string', format: 'binary' },
+                    description: 'Uploaded certificate files (PDF or Image only)'
+                  },
                 },
               },
             },
@@ -731,8 +740,30 @@ const openApiSpec = {
                 required: ['experience'],
                 properties: {
                   experience: { type: 'integer', example: 8 },
-                  licenseType: { type: 'string', example: 'Cosmetology License' },
-                  certificateUrl: { type: 'string', example: 'https://...' },
+                  licenses: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        licenseName: { type: 'string', example: 'Cosmetology License' },
+                        certificateUrl: { type: 'string', example: 'https://...' }
+                      }
+                    },
+                    example: [
+                      { "licenseName": "Cosmetology License", "certificateUrl": "https://..." },
+                      { "licenseName": "Barber License", "certificateUrl": "https://..." }
+                    ]
+                  },
+                  licenseType: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    example: ['Cosmetology License', 'Barber License']
+                  },
+                  certificateUrl: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    example: ['https://...', 'https://...']
+                  }
                 },
               },
             },
