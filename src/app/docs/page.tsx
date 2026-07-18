@@ -242,9 +242,9 @@ const openApiSpec = {
             'application/json': {
               schema: {
                 type: 'object',
-                required: ['email'],
+                required: ['phoneNumber'],
                 properties: {
-                  email: { type: 'string', example: 'user@lookclean.com' },
+                  phoneNumber: { type: 'string', example: '+15197749197' },
                 },
               },
             },
@@ -258,7 +258,7 @@ const openApiSpec = {
             description: 'Invalid input or account lacks a verified phone number',
           },
           404: {
-            description: 'User email address not found',
+            description: 'Phone number not registered',
           },
         },
       },
@@ -267,7 +267,7 @@ const openApiSpec = {
       post: {
         tags: ['Authenticate'],
         summary: 'Verify Forgot Password OTP',
-        description: 'Verifies the 6-digit verification code sent to the email address. Yields a short-lived reset token.',
+        description: 'Verifies the 6-digit verification code sent to the phone number. Yields a short-lived reset token.',
         security: [],
         requestBody: {
           required: true,
@@ -275,9 +275,9 @@ const openApiSpec = {
             'application/json': {
               schema: {
                 type: 'object',
-                required: ['email', 'code'],
+                required: ['phoneNumber', 'code'],
                 properties: {
-                  email: { type: 'string', example: 'user@lookclean.com' },
+                  phoneNumber: { type: 'string', example: '+15197749197' },
                   code: { type: 'string', example: '123456' },
                 },
               },
@@ -302,7 +302,7 @@ const openApiSpec = {
             description: 'Invalid or expired OTP code',
           },
           404: {
-            description: 'User email address not found',
+            description: 'Phone number not registered',
           },
         },
       },
