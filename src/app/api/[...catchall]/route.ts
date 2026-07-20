@@ -124,6 +124,36 @@ export const otpStore = new Map<string, { code: string; exp: number }>();
 // Memory array to store client provider wishlist items
 export const wishlistStore: { clientId: number; providerId: number }[] = [];
 
+// Dummy reviews object matching screenshot specs
+export const DEFAULT_DUMMY_REVIEWS = {
+  rating: 4.9,
+  totalReviews: 312,
+  totalReviewsText: '312 reviews',
+  list: [
+    {
+      name: 'James W.',
+      initials: 'JW',
+      timeAgo: '2 days ago',
+      rating: 5,
+      comment: "Absolutely incredible experience. Best fade I've ever had."
+    },
+    {
+      name: 'Noah K.',
+      initials: 'NK',
+      timeAgo: '1 week ago',
+      rating: 5,
+      comment: 'Professional, clean, and fast. Will definitely book again!'
+    },
+    {
+      name: 'Leo M.',
+      initials: 'LM',
+      timeAgo: '2 weeks ago',
+      rating: 4,
+      comment: 'Great atmosphere and skilled hands. Highly recommend.'
+    }
+  ]
+};
+
 // Helper: Check if DB connection works, else use fallback
 async function executeWithDbFallback<T>(
   dbAction: () => Promise<T>,
@@ -578,13 +608,13 @@ export async function GET(
             const isWishlisted = wishlistStore.some(
               (item) => item.clientId === auth.userId && item.providerId === u.id
             );
-            u.isWishlisted = isWishlisted;
 
             if (u.providerProfile) {
               await enrichProviderProfile(u.providerProfile, request);
-              u.providerProfile.reviews = 4.9;
+              u.providerProfile.reviews = DEFAULT_DUMMY_REVIEWS;
               u.providerProfile.earliestTime = '00:00 AM';
               u.providerProfile.isWishlisted = isWishlisted;
+
             }
           }
         }
@@ -694,10 +724,9 @@ export async function GET(
         const sanitizedProviders = (providersList as any[] || []).map((u) => {
           const sanitized = sanitizeUser(u, request);
           if (sanitized) {
-            sanitized.isWishlisted = true;
             if (sanitized.providerProfile) {
               sanitized.providerProfile.isWishlisted = true;
-              sanitized.providerProfile.reviews = 4.9;
+              sanitized.providerProfile.reviews = DEFAULT_DUMMY_REVIEWS;
               sanitized.providerProfile.earliestTime = '00:00 AM';
             }
           }
@@ -1187,7 +1216,7 @@ export async function GET(
           async () => {
             const config = mockDb.availabilityConfigs.find((c) => c.providerId === providerId) || null;
             const activeSlots = mockDb.activeSlots.filter((s) => s.providerId === providerId && s.dayOfWeek.toLowerCase() === dayName.toLowerCase());
-            
+
             const targetDateStr = bookingDate.toISOString().split('T')[0];
             const bookings = mockDb.bookings.filter((b) => {
               const bDateStr = new Date(b.date).toISOString().split('T')[0];
@@ -2334,23 +2363,42 @@ export async function POST(
         if (phoneNumber) otpStore.delete(phoneNumber);
       }
 
-      await executeWithDbFallback(
-        async () => {
-          await prisma.user.update({
-            where: { id: auth.userId },
-            data: { isPhoneVerified: true, phoneNumber },
-          });
-        },
-        async () => {
-          const user = mockDb.users.find((u) => u.id === auth.userId);
-          if (user) {
-            user.isPhoneVerified = true;
-            user.phoneNumber = phoneNumber;
-          }
-        }
-      );
+      try {
+        await executeWithDbFallback(
+          async () => {
+            if (phoneNumber) {
+              const existingUser = await prisma.user.findFirst({
+                where: {
+                  phoneNumber,
+                  id: { not: auth.userId },
+                },
+              });
+              if (existingUser) {
+                throw new Error('This phone number is already registered to another user account.');
+              }
+            }
 
-      return NextResponse.json({ success: true, message: 'Phone number verified successfully!' });
+            await prisma.user.update({
+              where: { id: auth.userId },
+              data: { isPhoneVerified: true, phoneNumber: phoneNumber || null },
+            });
+          },
+          async () => {
+            const user = mockDb.users.find((u) => u.id === auth.userId);
+            if (user) {
+              user.isPhoneVerified = true;
+              user.phoneNumber = phoneNumber;
+            }
+          }
+        );
+
+        return NextResponse.json({ success: true, message: 'Phone number verified successfully!' });
+      } catch (err: any) {
+        if (err?.code === 'P2002' || err?.message?.includes('users_phoneNumber_key')) {
+          return NextResponse.json({ message: 'This phone number is already registered to another user account.' }, { status: 400 });
+        }
+        return NextResponse.json({ message: err.message || 'Verification failed' }, { status: 400 });
+      }
     }
 
     // 9. Save Twilio Settings (/api/admin/settings/twilio)
@@ -3482,8 +3530,8 @@ export async function POST(
 
               let match = mockDb.activeSlots.find(
                 (s) => s.providerId === auth.userId &&
-                s.dayOfWeek.toLowerCase() === dayOfWeek.toLowerCase() &&
-                s.timeSlot === timeSlot
+                  s.dayOfWeek.toLowerCase() === dayOfWeek.toLowerCase() &&
+                  s.timeSlot === timeSlot
               );
 
               if (match) {
@@ -3700,7 +3748,7 @@ export async function POST(
           async () => {
             const config = mockDb.availabilityConfigs.find((c) => c.providerId === providerIdInt) || null;
             const activeSlots = mockDb.activeSlots.filter((s) => s.providerId === providerIdInt && s.dayOfWeek.toLowerCase() === dayName.toLowerCase());
-            
+
             const targetDateStr = bookingDate.toISOString().split('T')[0];
             const existingBookings = mockDb.bookings.filter((b) => {
               const bDateStr = new Date(b.date).toISOString().split('T')[0];

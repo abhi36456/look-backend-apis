@@ -527,7 +527,27 @@ const openApiSpec = {
                               },
                             },
                           },
-                          reviews: { type: 'number', example: 4.9 },
+                          reviews: {
+                            type: 'object',
+                            properties: {
+                              rating: { type: 'number', example: 4.9 },
+                              totalReviews: { type: 'integer', example: 312 },
+                              totalReviewsText: { type: 'string', example: '312 reviews' },
+                              list: {
+                                type: 'array',
+                                items: {
+                                  type: 'object',
+                                  properties: {
+                                    name: { type: 'string', example: 'James W.' },
+                                    initials: { type: 'string', example: 'JW' },
+                                    timeAgo: { type: 'string', example: '2 days ago' },
+                                    rating: { type: 'integer', example: 5 },
+                                    comment: { type: 'string', example: "Absolutely incredible experience. Best fade I've ever had." }
+                                  }
+                                }
+                              }
+                            }
+                          },
                           earliestTime: { type: 'string', example: '00:00 AM' },
                           isWishlisted: { type: 'boolean', example: false },
                         },
@@ -643,7 +663,27 @@ const openApiSpec = {
                               },
                             },
                           },
-                          reviews: { type: 'number', example: 4.9 },
+                          reviews: {
+                            type: 'object',
+                            properties: {
+                              rating: { type: 'number', example: 4.9 },
+                              totalReviews: { type: 'integer', example: 312 },
+                              totalReviewsText: { type: 'string', example: '312 reviews' },
+                              list: {
+                                type: 'array',
+                                items: {
+                                  type: 'object',
+                                  properties: {
+                                    name: { type: 'string', example: 'James W.' },
+                                    initials: { type: 'string', example: 'JW' },
+                                    timeAgo: { type: 'string', example: '2 days ago' },
+                                    rating: { type: 'integer', example: 5 },
+                                    comment: { type: 'string', example: "Absolutely incredible experience. Best fade I've ever had." }
+                                  }
+                                }
+                              }
+                            }
+                          },
                           earliestTime: { type: 'string', example: '00:00 AM' },
                         },
                       },
