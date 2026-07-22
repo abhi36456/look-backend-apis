@@ -5,7 +5,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShieldAlert, LogOut, Search, Filter, ShieldCheck, Phone, Check, Mail,
-  X, Calendar, Star, MapPin, Award, Clock, Users, Building, Activity, FileText, ChevronRight, Settings, Lock, Server, Globe, Tag, Scissors, Sparkles, Database
+  X, Calendar, Star, MapPin, Award, Clock, Users, Building, Activity, FileText, ChevronRight, Settings, Lock, Server, Globe, Tag, Scissors, Sparkles, Database,
+  HelpCircle, AlertCircle, Smartphone, Plus, Trash2, Edit3, Save, Eye, CheckCircle, ExternalLink
 } from 'lucide-react';
 import Button from '@/components/Button';
 import Input from '@/components/Input';
@@ -58,13 +59,33 @@ export default function AdminPage() {
   const router = useRouter();
 
   // Derive activeTab from pathname
-  const activeTab = pathname.endsWith('/users') ? 'users' : (pathname.endsWith('/vouchers') ? 'vouchers' : (pathname.endsWith('/settings') ? 'settings' : 'dashboard'));
+  type AdminTabType = 'dashboard' | 'users' | 'settings' | 'vouchers' | 'cms' | 'faqs' | 'reports';
 
-  const handleTabChange = (tab: 'dashboard' | 'users' | 'settings' | 'vouchers') => {
+  const activeTab: AdminTabType = pathname.endsWith('/users')
+    ? 'users'
+    : pathname.endsWith('/vouchers')
+    ? 'vouchers'
+    : pathname.endsWith('/cms')
+    ? 'cms'
+    : pathname.endsWith('/faqs')
+    ? 'faqs'
+    : pathname.endsWith('/reports')
+    ? 'reports'
+    : pathname.endsWith('/settings')
+    ? 'settings'
+    : 'dashboard';
+
+  const handleTabChange = (tab: AdminTabType) => {
     if (tab === 'users') {
       router.push('/admin/users');
     } else if (tab === 'vouchers') {
       router.push('/admin/vouchers');
+    } else if (tab === 'cms') {
+      router.push('/admin/cms');
+    } else if (tab === 'faqs') {
+      router.push('/admin/faqs');
+    } else if (tab === 'reports') {
+      router.push('/admin/reports');
     } else if (tab === 'settings') {
       router.push('/admin/settings');
     } else {
@@ -91,7 +112,42 @@ export default function AdminPage() {
   const [verifyLoading, setVerifyLoading] = useState(false);
 
   // Settings tab state
-  const [settingsSubTab, setSettingsSubTab] = useState<'password' | 'twilio' | 'categories' | 'services' | 'ambience' | 'database'>('password');
+  const [settingsSubTab, setSettingsSubTab] = useState<'password' | 'twilio' | 'appversion' | 'categories' | 'services' | 'ambience' | 'database'>('password');
+
+  // App Version state
+  const [androidVersion, setAndroidVersion] = useState('1.0.0');
+  const [iosVersion, setIosVersion] = useState('1.0.0');
+  const [androidMinVersion, setAndroidMinVersion] = useState('1.0.0');
+  const [iosMinVersion, setIosMinVersion] = useState('1.0.0');
+  const [androidForceUpdate, setAndroidForceUpdate] = useState(false);
+  const [iosForceUpdate, setIosForceUpdate] = useState(false);
+  const [appVersionLoading, setAppVersionLoading] = useState(false);
+  const [appVersionMsg, setAppVersionMsg] = useState('');
+
+  // CMS Pages state
+  const [cmsActiveSlug, setCmsActiveSlug] = useState<'terms' | 'privacy-policy' | 'refund-policy' | 'payment-policy' | 'community-guidelines'>('terms');
+  const [cmsTitle, setCmsTitle] = useState('Terms & Conditions');
+  const [cmsContent, setCmsContent] = useState('');
+  const [cmsLoading, setCmsLoading] = useState(false);
+  const [cmsSaving, setCmsSaving] = useState(false);
+  const [cmsSavedMsg, setCmsSavedMsg] = useState('');
+  const [cmsPreview, setCmsPreview] = useState(false);
+
+  // FAQs state
+  const [faqsList, setFaqsList] = useState<{ id: number; question: string; answer: string; category: string; order: number }[]>([]);
+  const [faqsLoading, setFaqsLoading] = useState(false);
+  const [faqModalOpen, setFaqModalOpen] = useState(false);
+  const [editingFaqId, setEditingFaqId] = useState<number | null>(null);
+  const [faqQuestion, setFaqQuestion] = useState('');
+  const [faqAnswer, setFaqAnswer] = useState('');
+  const [faqCategory, setFaqCategory] = useState('General');
+  const [faqOrder, setFaqOrder] = useState(0);
+
+  // Reports & Issues state
+  const [reportsList, setReportsList] = useState<any[]>([]);
+  const [reportsTab, setReportsTab] = useState<'open' | 'closed'>('open');
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [reportsUpdatingId, setReportsUpdatingId] = useState<number | null>(null);
 
   // Vouchers CRUD state
   const [vouchersList, setVouchersList] = useState<{ id: number; code: string; title: string; amount: number; isActive: boolean; createdAt: string }[]>([]);
@@ -366,6 +422,223 @@ export default function AdminPage() {
     }
   };
 
+  // --- APP VERSIONS HANDLERS ---
+  const fetchAppVersions = async () => {
+    setAppVersionLoading(true);
+    try {
+      const res = await fetch('/api/admin/settings/app-version', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAndroidVersion(data.androidVersion || '1.0.0');
+        setIosVersion(data.iosVersion || '1.0.0');
+        setAndroidMinVersion(data.androidMinVersion || data.androidVersion || '1.0.0');
+        setIosMinVersion(data.iosMinVersion || data.iosVersion || '1.0.0');
+        setAndroidForceUpdate(Boolean(data.androidForceUpdate));
+        setIosForceUpdate(Boolean(data.iosForceUpdate));
+      }
+    } catch (err) {
+      console.error('Fetch app versions failed', err);
+    } finally {
+      setAppVersionLoading(false);
+    }
+  };
+
+  const handleSaveAppVersion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAppVersionLoading(true);
+    setAppVersionMsg('');
+    try {
+      const res = await fetch('/api/admin/settings/app-version', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          androidVersion,
+          iosVersion,
+          androidMinVersion,
+          iosMinVersion,
+          androidForceUpdate,
+          iosForceUpdate
+        })
+      });
+      if (res.ok) {
+        setAppVersionMsg('App version settings saved successfully!');
+        setTimeout(() => setAppVersionMsg(''), 3000);
+      } else {
+        const errData = await res.json();
+        alert(errData.message || 'Failed to save app version');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error occurred');
+    } finally {
+      setAppVersionLoading(false);
+    }
+  };
+
+  // --- CMS PAGES HANDLERS ---
+  const slugToTitle = (slug: string) => {
+    switch (slug) {
+      case 'terms': return 'Terms & Conditions';
+      case 'privacy-policy': return 'Privacy Policy';
+      case 'refund-policy': return 'Refund Policy';
+      case 'payment-policy': return 'Payment Policy';
+      case 'community-guidelines': return 'Community Guidelines';
+      default: return slug;
+    }
+  };
+
+  const fetchCmsPage = async (slug: string) => {
+    setCmsLoading(true);
+    setCmsSavedMsg('');
+    try {
+      const res = await fetch(`/api/cms/${slug}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCmsTitle(data.title || slugToTitle(slug));
+        setCmsContent(data.content || '');
+      }
+    } catch (err) {
+      console.error('Fetch CMS page failed', err);
+    } finally {
+      setCmsLoading(false);
+    }
+  };
+
+  const handleSaveCmsPage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCmsSaving(true);
+    setCmsSavedMsg('');
+    try {
+      const res = await fetch('/api/admin/cms-pages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ slug: cmsActiveSlug, title: cmsTitle, content: cmsContent })
+      });
+      if (res.ok) {
+        setCmsSavedMsg('CMS Page updated successfully!');
+        setTimeout(() => setCmsSavedMsg(''), 3000);
+      } else {
+        const errData = await res.json();
+        alert(errData.message || 'Failed to update CMS page');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error saving page');
+    } finally {
+      setCmsSaving(false);
+    }
+  };
+
+  // --- FAQ HANDLERS ---
+  const fetchFaqs = async () => {
+    setFaqsLoading(true);
+    try {
+      const res = await fetch('/api/admin/faqs', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFaqsList(data);
+      }
+    } catch (err) {
+      console.error('Fetch FAQs failed', err);
+    } finally {
+      setFaqsLoading(false);
+    }
+  };
+
+  const handleSaveFaq = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!faqQuestion.trim() || !faqAnswer.trim()) return;
+    setFaqsLoading(true);
+    try {
+      const res = await fetch('/api/admin/faqs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          id: editingFaqId,
+          question: faqQuestion,
+          answer: faqAnswer,
+          category: faqCategory,
+          order: Number(faqOrder)
+        })
+      });
+      if (res.ok) {
+        setFaqModalOpen(false);
+        setEditingFaqId(null);
+        setFaqQuestion('');
+        setFaqAnswer('');
+        setFaqCategory('General');
+        setFaqOrder(0);
+        fetchFaqs();
+      } else {
+        const errData = await res.json();
+        alert(errData.message || 'Failed to save FAQ');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error occurred');
+    } finally {
+      setFaqsLoading(false);
+    }
+  };
+
+  const handleDeleteFaq = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this FAQ?')) return;
+    setFaqsLoading(true);
+    try {
+      const res = await fetch(`/api/admin/faqs?id=${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        fetchFaqs();
+      }
+    } catch (err) {
+      console.error('Delete FAQ failed', err);
+    } finally {
+      setFaqsLoading(false);
+    }
+  };
+
+  // --- REPORT & ISSUES HANDLERS ---
+  const fetchReports = async (statusFilter = reportsTab) => {
+    setReportsLoading(true);
+    try {
+      const res = await fetch(`/api/admin/reports?status=${statusFilter}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setReportsList(data);
+      }
+    } catch (err) {
+      console.error('Fetch reports failed', err);
+    } finally {
+      setReportsLoading(false);
+    }
+  };
+
+  const handleToggleReportStatus = async (id: number, currentStatus: string) => {
+    const newStatus = currentStatus === 'open' ? 'closed' : 'open';
+    setReportsUpdatingId(id);
+    try {
+      const res = await fetch('/api/admin/reports/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ id, status: newStatus })
+      });
+      if (res.ok) {
+        fetchReports(reportsTab);
+      }
+    } catch (err) {
+      console.error('Toggle status failed', err);
+    } finally {
+      setReportsUpdatingId(null);
+    }
+  };
+
   const fetchCategories = async () => {
     try {
       const res = await fetch('/api/admin/settings/categories', {
@@ -509,6 +782,26 @@ export default function AdminPage() {
       fetchUsers();
     }
   }, [isAuthenticated, token]);
+
+  // Tab switching data fetch
+  useEffect(() => {
+    if (isAuthenticated && token) {
+      if (activeTab === 'vouchers') {
+        fetchVouchers();
+      } else if (activeTab === 'cms') {
+        fetchCmsPage(cmsActiveSlug);
+      } else if (activeTab === 'faqs') {
+        fetchFaqs();
+      } else if (activeTab === 'reports') {
+        fetchReports(reportsTab);
+      } else if (activeTab === 'settings') {
+        if (settingsSubTab === 'appversion') fetchAppVersions();
+        else if (settingsSubTab === 'categories') fetchCategories();
+        else if (settingsSubTab === 'services') fetchServices();
+        else if (settingsSubTab === 'ambience') fetchAmbience();
+      }
+    }
+  }, [isAuthenticated, token, activeTab, cmsActiveSlug, reportsTab, settingsSubTab]);
 
   const fetchStats = async () => {
     try {
@@ -902,6 +1195,42 @@ export default function AdminPage() {
               <Tag className="w-4 h-4" />
               <span>Voucher Codes</span>
             </button>
+            <button
+              onClick={() => handleTabChange('cms')}
+              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-left cursor-pointer transition-all
+                ${activeTab === 'cms'
+                  ? 'bg-primary/10 border border-primary/20 text-white'
+                  : 'text-gray-400 hover:text-white hover:bg-white/5'
+                }
+              `}
+            >
+              <FileText className="w-4 h-4" />
+              <span>CMS Pages</span>
+            </button>
+            <button
+              onClick={() => handleTabChange('faqs')}
+              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-left cursor-pointer transition-all
+                ${activeTab === 'faqs'
+                  ? 'bg-primary/10 border border-primary/20 text-white'
+                  : 'text-gray-400 hover:text-white hover:bg-white/5'
+                }
+              `}
+            >
+              <HelpCircle className="w-4 h-4" />
+              <span>FAQ Menu</span>
+            </button>
+            <button
+              onClick={() => handleTabChange('reports')}
+              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-left cursor-pointer transition-all
+                ${activeTab === 'reports'
+                  ? 'bg-primary/10 border border-primary/20 text-white'
+                  : 'text-gray-400 hover:text-white hover:bg-white/5'
+                }
+              `}
+            >
+              <AlertCircle className="w-4 h-4" />
+              <span>Report & Issues</span>
+            </button>
           </nav>
         </div>
 
@@ -1175,6 +1504,339 @@ export default function AdminPage() {
                 )}
               </Card>
             </div>
+          ) : activeTab === 'cms' ? (
+            <div className="space-y-6">
+              <div className="border-b border-gray-900 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-extrabold text-white flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-primary" /> CMS Pages Setting
+                  </h2>
+                  <p className="text-xs text-gray-400">Edit website &amp; app legal / policy content using rich editor.</p>
+                </div>
+                <a
+                  href={`/${cmsActiveSlug}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/20 text-xs font-bold text-primary hover:bg-primary/20 transition-all"
+                >
+                  <Globe className="w-3.5 h-3.5" /> Direct Page Visit: /{cmsActiveSlug} <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+
+              {/* Top sub-tabs for selecting between all 5 CMS pages */}
+              <div className="flex flex-wrap gap-2 border-b border-gray-900 pb-3">
+                {[
+                  { slug: 'terms', label: 'Terms & Conditions' },
+                  { slug: 'privacy-policy', label: 'Privacy Policy' },
+                  { slug: 'refund-policy', label: 'Refund Policy' },
+                  { slug: 'payment-policy', label: 'Payment Policy' },
+                  { slug: 'community-guidelines', label: 'Community Guidelines' }
+                ].map((item) => (
+                  <button
+                    key={item.slug}
+                    onClick={() => {
+                      setCmsActiveSlug(item.slug as any);
+                    }}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border
+                      ${cmsActiveSlug === item.slug
+                        ? 'bg-primary/20 border-primary text-white shadow-lg shadow-primary/10'
+                        : 'bg-gray-900/60 border-gray-850 text-gray-400 hover:text-white hover:border-gray-700'
+                      }
+                    `}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Rich Editor Card */}
+              <Card className="border border-gray-850 p-6 space-y-6">
+                <form onSubmit={handleSaveCmsPage} className="space-y-5">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-900 pb-4">
+                    <div className="flex-1">
+                      <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">Page Title</label>
+                      <input
+                        type="text"
+                        value={cmsTitle}
+                        onChange={(e) => setCmsTitle(e.target.value)}
+                        className="w-full text-base font-bold text-white bg-gray-950 border border-gray-850 rounded-xl px-4 py-2.5 focus:border-primary focus:outline-none"
+                      />
+                    </div>
+                    <div className="flex items-center gap-3 pt-4 md:pt-0">
+                      <button
+                        type="button"
+                        onClick={() => setCmsPreview(!cmsPreview)}
+                        className="px-3.5 py-2 rounded-xl bg-gray-900 border border-gray-800 text-xs font-semibold text-gray-300 hover:text-white flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5" /> {cmsPreview ? 'Edit HTML' : 'Live Preview'}
+                      </button>
+                      <Button type="submit" isLoading={cmsSaving} leftIcon={<Save className="w-4 h-4" />}>
+                        Save CMS Page
+                      </Button>
+                    </div>
+                  </div>
+
+                  {cmsSavedMsg && (
+                    <div className="p-3 bg-green-500/10 border border-green-500/20 text-green-400 rounded-xl text-xs font-semibold flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4" /> {cmsSavedMsg}
+                    </div>
+                  )}
+
+                  {/* Rich formatting toolbar */}
+                  {!cmsPreview && (
+                    <div className="flex flex-wrap gap-1.5 p-2 bg-gray-950 border border-gray-850 rounded-xl text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setCmsContent(prev => prev + '<strong>Bold Text</strong>')}
+                        className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-gray-200 rounded font-bold text-xs"
+                      >
+                        B
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCmsContent(prev => prev + '<em>Italic Text</em>')}
+                        className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-gray-200 rounded italic text-xs"
+                      >
+                        I
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCmsContent(prev => prev + '\n<h1>Heading 1</h1>\n')}
+                        className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-gray-200 rounded font-extrabold text-xs"
+                      >
+                        H1
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCmsContent(prev => prev + '\n<h2>Heading 2</h2>\n')}
+                        className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-gray-200 rounded font-bold text-xs"
+                      >
+                        H2
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCmsContent(prev => prev + '\n<p>Paragraph text goes here...</p>\n')}
+                        className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-gray-200 rounded text-xs"
+                      >
+                        Paragraph
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCmsContent(prev => prev + '\n<ul className="list-disc ml-5">\n  <li>Point 1</li>\n  <li>Point 2</li>\n</ul>\n')}
+                        className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-gray-200 rounded text-xs"
+                      >
+                        Bullet List
+                      </button>
+                    </div>
+                  )}
+
+                  {cmsLoading ? (
+                    <div className="py-12 text-center text-gray-400 text-xs">Loading CMS page content...</div>
+                  ) : cmsPreview ? (
+                    <div className="p-6 bg-gray-950 border border-gray-850 rounded-2xl min-h-[300px] text-gray-200 text-sm leading-relaxed prose prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: cmsContent }} />
+                  ) : (
+                    <textarea
+                      rows={14}
+                      value={cmsContent}
+                      onChange={(e) => setCmsContent(e.target.value)}
+                      placeholder="Write HTML content here..."
+                      className="w-full text-xs font-mono text-gray-200 bg-gray-950 border border-gray-850 rounded-2xl p-4 focus:border-primary focus:outline-none transition-all leading-relaxed"
+                    />
+                  )}
+                </form>
+              </Card>
+            </div>
+          ) : activeTab === 'faqs' ? (
+            <div className="space-y-6">
+              <div className="border-b border-gray-900 pb-4 flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-extrabold text-white flex items-center gap-2">
+                    <HelpCircle className="w-5 h-5 text-primary" /> FAQ Management
+                  </h2>
+                  <p className="text-xs text-gray-400">Add, edit, or delete frequently asked questions displayed in the mobile app.</p>
+                </div>
+                <Button
+                  onClick={() => {
+                    setEditingFaqId(null);
+                    setFaqQuestion('');
+                    setFaqAnswer('');
+                    setFaqCategory('General');
+                    setFaqOrder(faqsList.length + 1);
+                    setFaqModalOpen(true);
+                  }}
+                  leftIcon={<Plus className="w-4 h-4" />}
+                >
+                  Add Question &amp; Answer
+                </Button>
+              </div>
+
+              {faqsLoading ? (
+                <div className="py-12 text-center text-gray-400 text-xs">Loading FAQs...</div>
+              ) : faqsList.length === 0 ? (
+                <Card className="p-8 text-center text-gray-400 text-xs">No FAQs added yet. Click &apos;Add Question &amp; Answer&apos; to create one.</Card>
+              ) : (
+                <div className="grid grid-cols-1 gap-4">
+                  {faqsList.map((faq) => (
+                    <Card key={faq.id} className="border border-gray-850 p-5 space-y-3 relative group">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-primary/10 border border-primary/20 text-primary">
+                              {faq.category || 'General'}
+                            </span>
+                            <span className="text-[10px] font-semibold text-gray-500">Order #{faq.order || 0}</span>
+                          </div>
+                          <h4 className="text-base font-bold text-white pt-1">{faq.question}</h4>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              setEditingFaqId(faq.id);
+                              setFaqQuestion(faq.question);
+                              setFaqAnswer(faq.answer);
+                              setFaqCategory(faq.category || 'General');
+                              setFaqOrder(faq.order || 0);
+                              setFaqModalOpen(true);
+                            }}
+                            className="p-2 rounded-xl bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-white transition-all cursor-pointer"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteFaq(faq.id)}
+                            className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-300 leading-relaxed bg-gray-950 p-3.5 rounded-xl border border-gray-900">
+                        {faq.answer}
+                      </p>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : activeTab === 'reports' ? (
+            <div className="space-y-6">
+              <div className="border-b border-gray-900 pb-4">
+                <h2 className="text-xl font-extrabold text-white flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 text-primary" /> Report &amp; Issues
+                </h2>
+                <p className="text-xs text-gray-400">Review app feedback and bug complaints submitted by users with attachments.</p>
+              </div>
+
+              {/* Sub-tabs for Open vs Closed */}
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setReportsTab('open')}
+                  className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 border
+                    ${reportsTab === 'open'
+                      ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                      : 'bg-gray-900/60 border-gray-850 text-gray-400 hover:text-white'
+                    }
+                  `}
+                >
+                  <AlertCircle className="w-4 h-4" />
+                  <span>Open Reports</span>
+                </button>
+                <button
+                  onClick={() => setReportsTab('closed')}
+                  className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 border
+                    ${reportsTab === 'closed'
+                      ? 'bg-green-500/10 border-green-500/30 text-green-400'
+                      : 'bg-gray-900/60 border-gray-850 text-gray-400 hover:text-white'
+                    }
+                  `}
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  <span>Closed Reports</span>
+                </button>
+              </div>
+
+              {reportsLoading ? (
+                <div className="py-12 text-center text-gray-400 text-xs">Loading issue reports...</div>
+              ) : reportsList.length === 0 ? (
+                <Card className="p-8 text-center text-gray-400 text-xs">
+                  No {reportsTab} issue reports found.
+                </Card>
+              ) : (
+                <div className="space-y-4">
+                  {reportsList.map((report) => {
+                    let attachmentsArr: string[] = [];
+                    try {
+                      if (typeof report.attachments === 'string') {
+                        attachmentsArr = JSON.parse(report.attachments);
+                      } else if (Array.isArray(report.attachments)) {
+                        attachmentsArr = report.attachments;
+                      }
+                    } catch {}
+
+                    return (
+                      <Card key={report.id} className="border border-gray-850 p-6 space-y-4">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-gray-900 pb-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border
+                                ${report.status === 'open' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-green-500/10 text-green-400 border-green-500/20'}
+                              `}>
+                                Status: {report.status}
+                              </span>
+                              <span className="text-[10px] text-gray-500">
+                                Reported: {new Date(report.createdAt).toLocaleString()}
+                              </span>
+                            </div>
+                            <h3 className="text-base font-bold text-white mt-1">{report.title}</h3>
+                          </div>
+                          <Button
+                            variant={report.status === 'open' ? 'primary' : 'secondary'}
+                            size="sm"
+                            isLoading={reportsUpdatingId === report.id}
+                            onClick={() => handleToggleReportStatus(report.id, report.status)}
+                          >
+                            {report.status === 'open' ? 'Mark as Closed' : 'Reopen Report'}
+                          </Button>
+                        </div>
+
+                        <div className="space-y-2">
+                          <p className="text-xs text-gray-300 leading-relaxed bg-gray-950 p-4 rounded-xl border border-gray-900 whitespace-pre-wrap">
+                            {report.message}
+                          </p>
+                        </div>
+
+                        {report.user && (
+                          <div className="flex items-center gap-3 text-xs text-gray-400 bg-gray-900/40 p-3 rounded-xl">
+                            <span className="font-bold text-gray-200">Submitter:</span>
+                            <span>{report.user.name || 'Anonymous User'}</span>
+                            {report.user.email && <span>({report.user.email})</span>}
+                          </div>
+                        )}
+
+                        {attachmentsArr.length > 0 && (
+                          <div className="space-y-2 pt-1">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Attachments ({attachmentsArr.length})</span>
+                            <div className="flex flex-wrap gap-3">
+                              {attachmentsArr.map((attUrl, idx) => (
+                                <a
+                                  key={idx}
+                                  href={attUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="w-20 h-20 rounded-xl overflow-hidden border border-gray-800 bg-gray-950 hover:border-primary transition-all relative block"
+                                >
+                                  <img src={attUrl} alt="attachment" className="w-full h-full object-cover" />
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           ) : activeTab === 'dashboard' ? (
             <>
               {/* Statistics Grid */}
@@ -1245,6 +1907,18 @@ export default function AdminPage() {
                   >
                     <Lock className="w-4 h-4" />
                     <span>Change Password</span>
+                  </button>
+                  <button
+                    onClick={() => setSettingsSubTab('appversion')}
+                    className={`flex items-center gap-2.5 px-4 py-3 rounded-xl text-xs font-semibold text-left transition-all w-full cursor-pointer
+                      ${settingsSubTab === 'appversion'
+                        ? 'bg-primary/10 border border-primary/20 text-white font-bold'
+                        : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
+                      }
+                    `}
+                  >
+                    <Smartphone className="w-4 h-4" />
+                    <span>App Versions</span>
                   </button>
                   <button
                     onClick={() => setSettingsSubTab('twilio')}
@@ -1353,6 +2027,99 @@ export default function AdminPage() {
                         <Button type="submit" isLoading={passwordLoading} className="px-6 py-2.5">
                           Update Password
                         </Button>
+                      </form>
+                    </Card>
+                  ) : settingsSubTab === 'appversion' ? (
+                    <Card className="border border-gray-850 p-6 space-y-6">
+                      <div className="border-b border-gray-900 pb-3">
+                        <h3 className="text-base font-bold text-white flex items-center gap-2">
+                          <Smartphone className="w-5 h-5 text-primary" /> Mobile App Version Control
+                        </h3>
+                        <p className="text-xs text-gray-400">Configure current Android and iOS version requirements for app updates.</p>
+                      </div>
+
+                      {appVersionMsg && (
+                        <div className="p-3 bg-green-500/10 border border-green-500/20 text-green-400 rounded-xl text-xs font-semibold flex items-center gap-2">
+                          <CheckCircle className="w-4 h-4" /> {appVersionMsg}
+                        </div>
+                      )}
+
+                      <form onSubmit={handleSaveAppVersion} className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          {/* Android Settings Card */}
+                          <div className="bg-gray-950 border border-gray-850 p-5 rounded-2xl space-y-4">
+                            <h4 className="text-xs font-bold uppercase tracking-wider text-green-400 flex items-center gap-2">
+                              <Smartphone className="w-4 h-4" /> Android App Version
+                            </h4>
+                            <Input
+                              label="Current Android Version"
+                              type="text"
+                              placeholder="1.0.0"
+                              value={androidVersion}
+                              onChange={(e) => setAndroidVersion(e.target.value)}
+                              required
+                            />
+                            <Input
+                              label="Minimum Required Version"
+                              type="text"
+                              placeholder="1.0.0"
+                              value={androidMinVersion}
+                              onChange={(e) => setAndroidMinVersion(e.target.value)}
+                            />
+                            <div className="flex items-center gap-3 pt-2">
+                              <input
+                                type="checkbox"
+                                id="androidForce"
+                                checked={androidForceUpdate}
+                                onChange={(e) => setAndroidForceUpdate(e.target.checked)}
+                                className="w-4 h-4 accent-primary rounded cursor-pointer"
+                              />
+                              <label htmlFor="androidForce" className="text-xs font-semibold text-gray-300 cursor-pointer">
+                                Force Update for Android Users
+                              </label>
+                            </div>
+                          </div>
+
+                          {/* iOS Settings Card */}
+                          <div className="bg-gray-950 border border-gray-850 p-5 rounded-2xl space-y-4">
+                            <h4 className="text-xs font-bold uppercase tracking-wider text-blue-400 flex items-center gap-2">
+                              <Smartphone className="w-4 h-4" /> iOS App Version
+                            </h4>
+                            <Input
+                              label="Current iOS Version"
+                              type="text"
+                              placeholder="1.0.0"
+                              value={iosVersion}
+                              onChange={(e) => setIosVersion(e.target.value)}
+                              required
+                            />
+                            <Input
+                              label="Minimum Required Version"
+                              type="text"
+                              placeholder="1.0.0"
+                              value={iosMinVersion}
+                              onChange={(e) => setIosMinVersion(e.target.value)}
+                            />
+                            <div className="flex items-center gap-3 pt-2">
+                              <input
+                                type="checkbox"
+                                id="iosForce"
+                                checked={iosForceUpdate}
+                                onChange={(e) => setIosForceUpdate(e.target.checked)}
+                                className="w-4 h-4 accent-primary rounded cursor-pointer"
+                              />
+                              <label htmlFor="iosForce" className="text-xs font-semibold text-gray-300 cursor-pointer">
+                                Force Update for iOS Users
+                              </label>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-end">
+                          <Button type="submit" isLoading={appVersionLoading} leftIcon={<Save className="w-4 h-4" />}>
+                            Save App Version Settings
+                          </Button>
+                        </div>
                       </form>
                     </Card>
                   ) : settingsSubTab === 'twilio' ? (
@@ -2527,6 +3294,82 @@ export default function AdminPage() {
                   Close Panel
                 </Button>
               </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* FAQ MODAL */}
+      <AnimatePresence>
+        {faqModalOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.5 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setFaqModalOpen(false)}
+              className="fixed inset-0 bg-black z-40"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="fixed inset-0 m-auto w-full max-w-lg h-fit bg-gray-950 border border-gray-850 shadow-2xl z-50 p-6 rounded-2xl space-y-4"
+            >
+              <div className="flex items-center justify-between border-b border-gray-900 pb-3">
+                <h3 className="text-base font-bold text-white">
+                  {editingFaqId ? 'Edit FAQ' : 'Add New FAQ'}
+                </h3>
+                <button onClick={() => setFaqModalOpen(false)} className="text-gray-400 hover:text-white cursor-pointer">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveFaq} className="space-y-4">
+                <Input
+                  label="Question"
+                  type="text"
+                  placeholder="e.g. How do I book an appointment?"
+                  value={faqQuestion}
+                  onChange={(e) => setFaqQuestion(e.target.value)}
+                  required
+                />
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block">Answer Description</label>
+                  <textarea
+                    rows={4}
+                    placeholder="Enter answer explanation..."
+                    value={faqAnswer}
+                    onChange={(e) => setFaqAnswer(e.target.value)}
+                    required
+                    className="w-full text-xs text-gray-200 bg-gray-950 border border-gray-850 rounded-xl p-3 focus:border-primary focus:outline-none"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <Input
+                    label="Category"
+                    type="text"
+                    placeholder="General"
+                    value={faqCategory}
+                    onChange={(e) => setFaqCategory(e.target.value)}
+                  />
+                  <Input
+                    label="Sort Order"
+                    type="number"
+                    placeholder="1"
+                    value={String(faqOrder)}
+                    onChange={(e) => setFaqOrder(Number(e.target.value))}
+                  />
+                </div>
+                <div className="flex justify-end gap-3 pt-2">
+                  <Button variant="secondary" type="button" onClick={() => setFaqModalOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" isLoading={faqsLoading}>
+                    Save FAQ
+                  </Button>
+                </div>
+              </form>
             </motion.div>
           </>
         )}

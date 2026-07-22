@@ -99,6 +99,51 @@ const mockDb = {
   availabilityConfigs: [] as any[],
   activeSlots: [] as any[],
   vouchers: [] as any[],
+  reviews: [] as any[],
+  cmsPages: [
+    {
+      slug: 'terms',
+      title: 'Terms & Conditions',
+      content: '<h1>Terms & Conditions</h1><p>Welcome to LookClean. By using our platform, you agree to comply with and be bound by the following terms and conditions.</p><p>1. Services provided by independent providers.<br>2. Bookings and cancellations subject to provider rules.</p>'
+    },
+    {
+      slug: 'privacy-policy',
+      title: 'Privacy Policy',
+      content: '<h1>Privacy Policy</h1><p>Your privacy is important to us. LookClean respects your privacy regarding any information we may collect while operating our app and website.</p>'
+    },
+    {
+      slug: 'refund-policy',
+      title: 'Refund Policy',
+      content: '<h1>Refund Policy</h1><p>Refund requests must be submitted within 24 hours of scheduled appointment. Cancellation fees may apply according to provider policies.</p>'
+    },
+    {
+      slug: 'payment-policy',
+      title: 'Payment Policy',
+      content: '<h1>Payment Policy</h1><p>All payments are securely processed. We accept credit cards, debit cards, and digital wallet options.</p>'
+    },
+    {
+      slug: 'community-guidelines',
+      title: 'Community Guidelines',
+      content: '<h1>Community Guidelines</h1><p>We strive to maintain a respectful, safe, and clean environment for both clients and beauty professionals.</p>'
+    }
+  ] as any[],
+  faqs: [
+    { id: 1, question: 'How do I book an appointment?', answer: 'Select a salon or freelancer, choose your service and time slot, then confirm booking.', category: 'General', order: 1 },
+    { id: 2, question: 'Can I cancel or reschedule my booking?', answer: 'Yes, go to My Bookings in your profile to reschedule or cancel at least 2 hours prior.', category: 'Bookings', order: 2 },
+    { id: 3, question: 'How are payments handled?', answer: 'Payments can be made online via secure gateway or directly at the salon if allowed.', category: 'Payments', order: 3 }
+  ] as any[],
+  issueReports: [
+    { id: 1, userId: 3, title: 'App Crash on Checkout', message: 'When selecting payment method, the screen froze.', attachments: [], status: 'open', createdAt: new Date().toISOString() },
+    { id: 2, userId: 3, title: 'Location Map Not Loading', message: 'Map view is showing blank box.', attachments: [], status: 'closed', createdAt: new Date().toISOString() }
+  ] as any[],
+  appVersions: {
+    androidVersion: '1.0.0',
+    iosVersion: '1.0.0',
+    androidMinVersion: '1.0.0',
+    iosMinVersion: '1.0.0',
+    androidForceUpdate: false,
+    iosForceUpdate: false
+  },
   twilioSettings: {
     activeMode: 'staging',
     staging: {
@@ -522,8 +567,9 @@ export async function GET(
 ) {
   try {
     const { catchall } = await params;
-    const path = catchall?.join('/') || '';
-    console.log(`[API GET] /api/${path}`);
+    const rawPath = catchall?.join('/') || '';
+    const path = rawPath.replace(/^api\//i, '').replace(/\/$/, '').trim();
+    console.log(`[API GET] rawPath='${rawPath}' -> path='${path}'`);
 
     // 1. Fetch client profile (/api/clients/me or /api/client/me)
     if (path === 'clients/me' || path === 'client/me') {
@@ -558,7 +604,7 @@ export async function GET(
       return NextResponse.json(sanitizeUser(userData, request));
     }
 
-    // 1a. Get list of all providers with category filter (/api/clients/providers or /api/client/providers)
+    // 1a. Get list of all providers with search & category filters (/api/clients/providers or /api/client/providers)
     if (path === 'clients/providers' || path === 'client/providers' || path === 'clients/provider' || path === 'client/provider') {
       const auth = await getAuthenticatedUser(request);
       if (!auth) {
@@ -569,8 +615,11 @@ export async function GET(
       }
 
       const { searchParams } = new URL(request.url);
-      const categoryId = searchParams.get('categoryId') || searchParams.get('category');
+      const categoryId = searchParams.get('categoryId') || searchParams.get('category') || searchParams.get('categoryName');
       const sortBy = searchParams.get('sortBy') || searchParams.get('sort');
+      const searchStr = (searchParams.get('search') || searchParams.get('query') || searchParams.get('q') || '').trim().toLowerCase();
+      const providerTypeFilter = (searchParams.get('providerType') || searchParams.get('type') || '').trim().toLowerCase();
+      const serviceFilter = (searchParams.get('service') || searchParams.get('serviceName') || '').trim().toLowerCase();
 
       try {
         const providersList = await executeWithDbFallback(
@@ -611,25 +660,88 @@ export async function GET(
 
             if (u.providerProfile) {
               await enrichProviderProfile(u.providerProfile, request);
-              u.providerProfile.reviews = DEFAULT_DUMMY_REVIEWS;
+
+              // Dynamically fetch and compute ratings/reviews for each provider
+              const reviews = await executeWithDbFallback(
+                async () => await prisma.review.findMany({ where: { providerId: u.id }, include: { client: true } }),
+                async () => mockDb.reviews.filter((r) => r.providerId === u.id)
+              );
+
+              if (reviews && reviews.length > 0) {
+                const avgRating = Number((reviews.reduce((acc: number, r: any) => acc + r.rating, 0) / reviews.length).toFixed(1));
+                u.providerProfile.reviews = {
+                  rating: avgRating,
+                  totalReviews: reviews.length,
+                  totalReviewsText: `${reviews.length} reviews`,
+                  list: reviews.map((r: any) => ({
+                    id: r.id,
+                    name: r.client?.name || 'Client',
+                    initials: (r.client?.name || 'CL').split(' ').map((n: string) => n[0]).join('').toUpperCase(),
+                    timeAgo: new Date(r.createdAt).toLocaleDateString(),
+                    rating: r.rating,
+                    comment: r.comment || ''
+                  }))
+                };
+              } else {
+                u.providerProfile.reviews = DEFAULT_DUMMY_REVIEWS;
+              }
+
               u.providerProfile.earliestTime = '00:00 AM';
               u.providerProfile.isWishlisted = isWishlisted;
-
             }
           }
         }
 
         let filteredProviders = sanitizedProviders;
+
+        // Filter by providerType (salon | freelancer)
+        if (providerTypeFilter && providerTypeFilter !== 'all') {
+          filteredProviders = filteredProviders.filter((u: any) => {
+            const type = (u.providerType || u.providerProfile?.providerType || '').toLowerCase();
+            return type === providerTypeFilter;
+          });
+        }
+
+        // Filter by category
         if (categoryId) {
           const targetId = Number(categoryId);
           const targetName = String(categoryId).toLowerCase();
-          filteredProviders = sanitizedProviders.filter((u) => {
+          filteredProviders = filteredProviders.filter((u: any) => {
             if (!u || !u.providerProfile || !Array.isArray(u.providerProfile.categories)) {
               return false;
             }
             return u.providerProfile.categories.some((cat: any) =>
-              cat.id === targetId || cat.title.toLowerCase() === targetName
+              cat.id === targetId || cat.title.toLowerCase().includes(targetName)
             );
+          });
+        }
+
+        // Filter by service
+        if (serviceFilter) {
+          filteredProviders = filteredProviders.filter((u: any) => {
+            if (!u || !u.providerProfile || !Array.isArray(u.providerProfile.services)) {
+              return false;
+            }
+            return u.providerProfile.services.some((s: any) =>
+              (s.name || '').toLowerCase().includes(serviceFilter)
+            );
+          });
+        }
+
+        // Search by salon name, freelancer name, service, category
+        if (searchStr) {
+          filteredProviders = filteredProviders.filter((u: any) => {
+            if (!u) return false;
+            const uName = (u.name || '').toLowerCase();
+            const pName = (u.providerProfile?.name || '').toLowerCase();
+            const pType = (u.providerType || '').toLowerCase();
+            const serviceMatch = u.providerProfile?.services?.some((s: any) =>
+              (s.name || '').toLowerCase().includes(searchStr) || (s.category || '').toLowerCase().includes(searchStr)
+            );
+            const categoryMatch = u.providerProfile?.categories?.some((c: any) =>
+              (c.title || '').toLowerCase().includes(searchStr)
+            );
+            return uName.includes(searchStr) || pName.includes(searchStr) || pType.includes(searchStr) || serviceMatch || categoryMatch;
           });
         }
 
@@ -1183,6 +1295,8 @@ export async function GET(
         return NextResponse.json({ message: 'Missing providerId or date parameter' }, { status: 400 });
       }
 
+      const currentTimeParam = searchParams.get('currentTime') || searchParams.get('time') || searchParams.get('clientTime');
+
       const providerId = parseInt(providerIdStr, 10);
       const bookingDate = new Date(dateStr);
       if (isNaN(bookingDate.getTime())) {
@@ -1232,13 +1346,40 @@ export async function GET(
 
         const slotTimes = getSlotsRange(startTime, endTime, slotDuration);
 
-        const availableSlots = slotTimes.filter((time) => {
+        let currentMinutes: number | null = null;
+        let isPastDate = false;
+
+        if (currentTimeParam) {
+          if (currentTimeParam.includes('T') || currentTimeParam.includes('-')) {
+            const clientDate = new Date(currentTimeParam);
+            if (!isNaN(clientDate.getTime())) {
+              const bDateOnly = dateStr.split('T')[0];
+              const cDateOnly = clientDate.toISOString().split('T')[0];
+              if (bDateOnly < cDateOnly) {
+                isPastDate = true;
+              } else if (bDateOnly === cDateOnly) {
+                currentMinutes = clientDate.getHours() * 60 + clientDate.getMinutes();
+              }
+            }
+          } else if (currentTimeParam.includes(':')) {
+            currentMinutes = parseTime(currentTimeParam);
+          }
+        }
+
+        const availableSlots = isPastDate ? [] : slotTimes.filter((time) => {
           const slotStatus = result.activeSlots.find((s) => s.timeSlot === time);
           if (slotStatus && !slotStatus.isAvailable) {
             return false;
           }
           const isBooked = result.bookings.some((b) => b.timeSlot === time);
-          return !isBooked;
+          if (isBooked) return false;
+          if (currentMinutes !== null) {
+            const slotMin = parseTime(time);
+            if (slotMin <= currentMinutes) {
+              return false;
+            }
+          }
+          return true;
         });
 
         return NextResponse.json({
@@ -1462,6 +1603,155 @@ export async function GET(
       return NextResponse.json(list);
     }
 
+    // 3. Client Available Promo Codes / Vouchers (/api/clients/vouchers or /api/clients/promocodes)
+    if (path === 'clients/vouchers' || path === 'client/vouchers' || path === 'clients/promocodes' || path === 'client/promocodes') {
+      try {
+        const vouchers = await executeWithDbFallback(
+          async () => await prisma.voucher.findMany({ where: { isActive: true }, orderBy: { createdAt: 'desc' } }),
+          async () => mockDb.vouchers.filter((v) => v.isActive)
+        );
+        return NextResponse.json(vouchers);
+      } catch (err: any) {
+        return NextResponse.json({ message: err.message || 'Failed to fetch promo codes' }, { status: 400 });
+      }
+    }
+
+    // 2. Client Provider Reviews GET (/api/clients/providers/reviews or /api/clients/reviews)
+    if (path === 'clients/providers/reviews' || path === 'client/providers/reviews' || path === 'clients/reviews' || path === 'client/reviews') {
+      const { searchParams } = new URL(request.url);
+      const providerIdStr = searchParams.get('providerId') || searchParams.get('providerProfileId');
+      if (!providerIdStr) {
+        return NextResponse.json({ message: 'Missing providerId parameter' }, { status: 400 });
+      }
+      const providerId = parseInt(providerIdStr, 10);
+      try {
+        const reviews = await executeWithDbFallback(
+          async () => await prisma.review.findMany({ where: { providerId }, include: { client: { select: { name: true, email: true } } }, orderBy: { createdAt: 'desc' } }),
+          async () => mockDb.reviews.filter((r) => r.providerId === providerId)
+        );
+
+        if (reviews && reviews.length > 0) {
+          const avgRating = Number((reviews.reduce((acc: number, r: any) => acc + r.rating, 0) / reviews.length).toFixed(1));
+          return NextResponse.json({
+            rating: avgRating,
+            totalReviews: reviews.length,
+            totalReviewsText: `${reviews.length} reviews`,
+            list: reviews.map((r: any) => ({
+              id: r.id,
+              name: r.client?.name || 'Client',
+              initials: (r.client?.name || 'CL').split(' ').map((n: string) => n[0]).join('').toUpperCase(),
+              timeAgo: new Date(r.createdAt).toLocaleDateString(),
+              rating: r.rating,
+              comment: r.comment || ''
+            }))
+          });
+        }
+        return NextResponse.json(DEFAULT_DUMMY_REVIEWS);
+      } catch (err: any) {
+        return NextResponse.json({ message: err.message || 'Failed to fetch reviews' }, { status: 400 });
+      }
+    }
+
+    // 5. CMS Pages GET endpoints (/api/cms/pages, /api/cms/:slug, /api/cms/terms, etc.)
+    if (path.startsWith('cms/') || path === 'cms' || path === 'admin/cms-pages') {
+      const parts = path.split('/');
+      let slug = parts.length > 1 ? parts[1] : '';
+      if (slug === 'pages' && parts.length > 2) {
+        slug = parts[2];
+      }
+
+      if (slug && slug !== 'pages') {
+        const page = await executeWithDbFallback(
+          async () => await prisma.cmsPage.findUnique({ where: { slug } }),
+          async () => mockDb.cmsPages.find((p) => p.slug === slug) || null
+        );
+        if (!page) {
+          return NextResponse.json({ message: 'CMS page not found' }, { status: 404 });
+        }
+        return NextResponse.json(page);
+      } else {
+        const pages = await executeWithDbFallback(
+          async () => await prisma.cmsPage.findMany(),
+          async () => mockDb.cmsPages
+        );
+        return NextResponse.json(pages);
+      }
+    }
+
+    // 6. App Version GET (/api/app-version, /api/settings/app-version, /api/clients/app-version)
+    if (path === 'app-version' || path === 'settings/app-version' || path === 'clients/app-version' || path === 'admin/settings/app-version') {
+      try {
+        const versions = await executeWithDbFallback(
+          async () => {
+            const setting = await prisma.systemSetting.findUnique({ where: { key: 'app_version' } });
+            return setting ? JSON.parse(setting.value) : mockDb.appVersions;
+          },
+          async () => mockDb.appVersions
+        );
+        return NextResponse.json(versions);
+      } catch (err: any) {
+        return NextResponse.json({ message: err.message || 'Failed to fetch app versions' }, { status: 400 });
+      }
+    }
+
+    // 7. FAQ GET (/api/faqs, /api/clients/faqs, /api/admin/faqs)
+    if (path === 'faqs' || path === 'clients/faqs' || path === 'admin/faqs' || path === 'client/faqs') {
+      try {
+        const faqs = await executeWithDbFallback(
+          async () => await prisma.faq.findMany({ orderBy: { order: 'asc' } }),
+          async () => [...mockDb.faqs].sort((a, b) => (a.order || 0) - (b.order || 0))
+        );
+        return NextResponse.json(faqs);
+      } catch (err: any) {
+        return NextResponse.json({ message: err.message || 'Failed to fetch FAQs' }, { status: 400 });
+      }
+    }
+
+    // 8. Report & Issues GET (/api/reports, /api/issues, /api/admin/reports)
+    if (path === 'reports' || path === 'issues' || path === 'admin/reports' || path === 'clients/reports' || path === 'client/reports') {
+      const auth = await getAuthenticatedUser(request);
+      const { searchParams } = new URL(request.url);
+      const statusFilter = searchParams.get('status');
+
+      try {
+        const reports = await executeWithDbFallback(
+          async () => {
+            const whereClause: any = {};
+            if (auth && auth.role !== 'admin') {
+              whereClause.userId = auth.userId;
+            }
+            if (statusFilter) {
+              whereClause.status = statusFilter;
+            }
+            return await prisma.issueReport.findMany({
+              where: whereClause,
+              include: { user: { select: { id: true, name: true, email: true, phoneNumber: true } } },
+              orderBy: { createdAt: 'desc' }
+            });
+          },
+          async () => {
+            let list = [...mockDb.issueReports];
+            if (auth && auth.role !== 'admin') {
+              list = list.filter((r) => r.userId === auth.userId);
+            }
+            if (statusFilter) {
+              list = list.filter((r) => r.status === statusFilter);
+            }
+            return list.map((r) => {
+              const user = mockDb.users.find((u) => u.id === r.userId);
+              return {
+                ...r,
+                user: user ? { id: user.id, name: user.name, email: user.email, phoneNumber: user.phoneNumber } : null
+              };
+            }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          }
+        );
+        return NextResponse.json(reports);
+      } catch (err: any) {
+        return NextResponse.json({ message: err.message || 'Failed to fetch reports' }, { status: 400 });
+      }
+    }
+
     return NextResponse.json({ message: 'Endpoint not found' }, { status: 404 });
   } catch (err: any) {
     console.error(`[API GET Error]`, err);
@@ -1475,8 +1765,9 @@ export async function POST(
 ) {
   try {
     const { catchall } = await params;
-    const path = catchall?.join('/') || '';
-    console.log(`[API POST] /api/${path}`);
+    const rawPath = catchall?.join('/') || '';
+    const path = rawPath.replace(/^api\//i, '').replace(/\/$/, '').trim();
+    console.log(`[API POST] rawPath='${rawPath}' -> path='${path}'`);
 
     let body = {};
     const contentType = request.headers.get('content-type') || '';
@@ -4075,6 +4366,296 @@ export async function POST(
       }
     }
 
+    // 2. Submit Review POST (/api/clients/reviews, /api/clients/providers/reviews)
+    if (path === 'clients/reviews' || path === 'client/reviews' || path === 'clients/providers/reviews' || path === 'client/providers/reviews') {
+      const auth = await getAuthenticatedUser(request);
+      if (!auth) {
+        return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+      }
+      const { providerId, serviceId, rating, comment, message } = body as any;
+      if (!providerId || !rating) {
+        return NextResponse.json({ message: 'providerId and rating are required' }, { status: 400 });
+      }
+
+      const reviewComment = comment || message || '';
+      try {
+        const newReview = await executeWithDbFallback<any>(
+          async () => {
+            return await prisma.review.create({
+              data: {
+                clientId: auth.userId,
+                providerId: Number(providerId),
+                serviceId: serviceId ? Number(serviceId) : null,
+                rating: Number(rating),
+                comment: reviewComment
+              }
+            });
+          },
+          async () => {
+            const rev = {
+              id: mockDb.reviews.length + 1,
+              clientId: auth.userId,
+              providerId: Number(providerId),
+              serviceId: serviceId ? Number(serviceId) : null,
+              rating: Number(rating),
+              comment: reviewComment,
+              createdAt: new Date().toISOString()
+            };
+            mockDb.reviews.push(rev);
+            return rev;
+          }
+        );
+        return NextResponse.json({ success: true, review: newReview });
+      } catch (err: any) {
+        return NextResponse.json({ message: err.message || 'Failed to submit review' }, { status: 400 });
+      }
+    }
+
+    // 5. CMS Pages POST (/api/admin/cms-pages, /api/cms/pages)
+    if (path === 'admin/cms-pages' || path === 'cms/pages') {
+      const auth = await getAuthenticatedUser(request);
+      if (!auth || auth.role !== 'admin') {
+        return NextResponse.json({ message: 'Forbidden: Requires admin role' }, { status: 403 });
+      }
+      const { slug, title, content } = body as any;
+      if (!slug || content === undefined) {
+        return NextResponse.json({ message: 'slug and content are required' }, { status: 400 });
+      }
+
+      try {
+        const updatedPage = await executeWithDbFallback(
+          async () => {
+            return await prisma.cmsPage.upsert({
+              where: { slug },
+              update: { title: title || slug, content },
+              create: { slug, title: title || slug, content }
+            });
+          },
+          async () => {
+            const idx = mockDb.cmsPages.findIndex((p) => p.slug === slug);
+            if (idx !== -1) {
+              if (title) mockDb.cmsPages[idx].title = title;
+              mockDb.cmsPages[idx].content = content;
+              return mockDb.cmsPages[idx];
+            } else {
+              const page = { slug, title: title || slug, content };
+              mockDb.cmsPages.push(page);
+              return page;
+            }
+          }
+        );
+        return NextResponse.json({ success: true, page: updatedPage });
+      } catch (err: any) {
+        return NextResponse.json({ message: err.message || 'Failed to update CMS page' }, { status: 400 });
+      }
+    }
+
+    // 6. App Version Settings POST (/api/admin/settings/app-version)
+    if (path === 'admin/settings/app-version') {
+      const auth = await getAuthenticatedUser(request);
+      if (!auth || auth.role !== 'admin') {
+        return NextResponse.json({ message: 'Forbidden: Requires admin role' }, { status: 403 });
+      }
+      const { androidVersion, iosVersion, androidMinVersion, iosMinVersion, androidForceUpdate, iosForceUpdate } = body as any;
+
+      const appVersions = {
+        androidVersion: androidVersion || '1.0.0',
+        iosVersion: iosVersion || '1.0.0',
+        androidMinVersion: androidMinVersion || androidVersion || '1.0.0',
+        iosMinVersion: iosMinVersion || iosVersion || '1.0.0',
+        androidForceUpdate: Boolean(androidForceUpdate),
+        iosForceUpdate: Boolean(iosForceUpdate)
+      };
+
+      try {
+        await executeWithDbFallback(
+          async () => {
+            await prisma.systemSetting.upsert({
+              where: { key: 'app_version' },
+              update: { value: JSON.stringify(appVersions) },
+              create: { key: 'app_version', value: JSON.stringify(appVersions) }
+            });
+          },
+          async () => {
+            mockDb.appVersions = appVersions;
+          }
+        );
+        return NextResponse.json({ success: true, appVersions });
+      } catch (err: any) {
+        return NextResponse.json({ message: err.message || 'Failed to update app versions' }, { status: 400 });
+      }
+    }
+
+    // 7. FAQ Create/Update POST (/api/admin/faqs)
+    if (path === 'admin/faqs') {
+      const auth = await getAuthenticatedUser(request);
+      if (!auth || auth.role !== 'admin') {
+        return NextResponse.json({ message: 'Forbidden: Requires admin role' }, { status: 403 });
+      }
+      const { id, question, answer, category, order } = body as any;
+
+      try {
+        if (id) {
+          const updatedFaq = await executeWithDbFallback(
+            async () => {
+              return await prisma.faq.update({
+                where: { id: Number(id) },
+                data: { question, answer, category, order: order ? Number(order) : undefined }
+              });
+            },
+            async () => {
+              const faq = mockDb.faqs.find((f) => f.id === Number(id));
+              if (faq) {
+                if (question !== undefined) faq.question = question;
+                if (answer !== undefined) faq.answer = answer;
+                if (category !== undefined) faq.category = category;
+                if (order !== undefined) faq.order = Number(order);
+              }
+              return faq;
+            }
+          );
+          return NextResponse.json({ success: true, faq: updatedFaq });
+        } else {
+          if (!question || !answer) {
+            return NextResponse.json({ message: 'question and answer are required' }, { status: 400 });
+          }
+          const createdFaq = await executeWithDbFallback<any>(
+            async () => {
+              return await prisma.faq.create({
+                data: { question, answer, category: category || 'General', order: order ? Number(order) : 0 }
+              });
+            },
+            async () => {
+              const faq = {
+                id: mockDb.faqs.length + 1,
+                question,
+                answer,
+                category: category || 'General',
+                order: order ? Number(order) : 0,
+                createdAt: new Date().toISOString()
+              };
+              mockDb.faqs.push(faq);
+              return faq;
+            }
+          );
+          return NextResponse.json({ success: true, faq: createdFaq });
+        }
+      } catch (err: any) {
+        return NextResponse.json({ message: err.message || 'Failed to save FAQ' }, { status: 400 });
+      }
+    }
+
+    // 8. Report & Issues POST (/api/reports, /api/issues)
+    if (path === 'reports' || path === 'issues' || path === 'clients/reports' || path === 'client/reports') {
+      const auth = await getAuthenticatedUser(request);
+      const userId: number | null = auth ? auth.userId : null;
+      let title = '';
+      let message = '';
+      let attachmentUrls: string[] = [];
+
+      try {
+        if (contentType.includes('multipart/form-data')) {
+          const formData = await request.formData();
+          title = (formData.get('title') as string) || '';
+          message = (formData.get('message') as string) || '';
+          const files = formData.getAll('attachments') as File[];
+
+          const uploadsDir = nodePath.join(process.cwd(), 'public', 'uploads', 'reports');
+          try {
+            await fs.mkdir(uploadsDir, { recursive: true });
+          } catch {}
+
+          for (const file of files) {
+            if (file && typeof file === 'object' && 'arrayBuffer' in file) {
+              const buffer = Buffer.from(await file.arrayBuffer());
+              const ext = nodePath.extname(file.name) || '.png';
+              const filename = `report_${Date.now()}_${Math.random().toString(36).substring(2, 7)}${ext}`;
+              const filePath = nodePath.join(uploadsDir, filename);
+              await fs.writeFile(filePath, buffer);
+              attachmentUrls.push(`/uploads/reports/${filename}`);
+            }
+          }
+        } else {
+          title = (body as any).title || '';
+          message = (body as any).message || '';
+          if (Array.isArray((body as any).attachments)) {
+            attachmentUrls = (body as any).attachments;
+          }
+        }
+
+        if (!title || !message) {
+          return NextResponse.json({ message: 'Title and message are required' }, { status: 400 });
+        }
+
+        const attachmentsJson = JSON.stringify(attachmentUrls);
+
+        const newReport = await executeWithDbFallback<any>(
+          async () => {
+            return await prisma.issueReport.create({
+              data: {
+                userId,
+                title,
+                message,
+                attachments: attachmentsJson,
+                status: 'open'
+              }
+            });
+          },
+          async () => {
+            const report = {
+              id: mockDb.issueReports.length + 1,
+              userId,
+              title,
+              message,
+              attachments: attachmentsJson,
+              status: 'open',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            };
+            mockDb.issueReports.push(report);
+            return report;
+          }
+        );
+        return NextResponse.json({ success: true, report: newReport });
+      } catch (err: any) {
+        return NextResponse.json({ message: err.message || 'Failed to submit report' }, { status: 400 });
+      }
+    }
+
+    // 8b. Update Report Status POST/PUT (/api/admin/reports/status, /api/admin/reports)
+    if (path === 'admin/reports/status' || path === 'admin/reports') {
+      const auth = await getAuthenticatedUser(request);
+      if (!auth || auth.role !== 'admin') {
+        return NextResponse.json({ message: 'Forbidden: Requires admin role' }, { status: 403 });
+      }
+      const { id, status } = body as any;
+      if (!id || !status) {
+        return NextResponse.json({ message: 'id and status are required' }, { status: 400 });
+      }
+
+      try {
+        const updatedReport = await executeWithDbFallback(
+          async () => {
+            return await prisma.issueReport.update({
+              where: { id: Number(id) },
+              data: { status }
+            });
+          },
+          async () => {
+            const report = mockDb.issueReports.find((r) => r.id === Number(id));
+            if (report) {
+              report.status = status;
+              report.updatedAt = new Date().toISOString();
+            }
+            return report;
+          }
+        );
+        return NextResponse.json({ success: true, report: updatedReport });
+      } catch (err: any) {
+        return NextResponse.json({ message: err.message || 'Failed to update report status' }, { status: 400 });
+      }
+    }
+
     return NextResponse.json({ message: 'Endpoint not found' }, { status: 404 });
   } catch (err: any) {
     console.error(`[API POST Error]`, err);
@@ -4088,8 +4669,9 @@ export async function PUT(
 ) {
   try {
     const { catchall } = await params;
-    const path = catchall?.join('/') || '';
-    console.log(`[API PUT] /api/${path}`);
+    const rawPath = catchall?.join('/') || '';
+    const path = rawPath.replace(/^api\//i, '').replace(/\/$/, '').trim();
+    console.log(`[API PUT] rawPath='${rawPath}' -> path='${path}'`);
 
     const auth = await getAuthenticatedUser(request);
     if (!auth) {
@@ -4502,6 +5084,10 @@ export async function PUT(
 
     // Update Provider Profile (/api/providers/profile)
     if (path === 'providers/profile') {
+      const auth = await getAuthenticatedUser(request);
+      if (!auth) {
+        return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+      }
       if (auth.role !== 'provider') {
         return NextResponse.json({ message: 'Forbidden: Requires provider role' }, { status: 403 });
       }
@@ -4673,10 +5259,6 @@ export async function PUT(
       }
     }
 
-
-
-
-
     // PUT Admin Voucher - Update
     if (path === 'admin/settings/vouchers') {
       const auth = await getAuthenticatedUser(request);
@@ -4749,8 +5331,9 @@ export async function DELETE(
 ) {
   try {
     const { catchall } = await params;
-    const path = catchall?.join('/') || '';
-    console.log(`[API DELETE] /api/${path}`);
+    const rawPath = catchall?.join('/') || '';
+    const path = rawPath.replace(/^api\//i, '').replace(/\/$/, '').trim();
+    console.log(`[API DELETE] rawPath='${rawPath}' -> path='${path}'`);
 
     const auth = await getAuthenticatedUser(request);
     if (!auth) {
@@ -5170,6 +5753,33 @@ export async function DELETE(
         return NextResponse.json({ success: true, message: 'Voucher deleted successfully.' });
       } catch (err: any) {
         return NextResponse.json({ message: err.message || 'Failed to delete voucher' }, { status: 400 });
+      }
+    }
+
+    // DELETE Admin FAQ
+    if (path === 'admin/faqs') {
+      const auth = await getAuthenticatedUser(request);
+      if (!auth || auth.role !== 'admin') {
+        return NextResponse.json({ message: 'Forbidden: Requires admin role' }, { status: 403 });
+      }
+      const { searchParams } = new URL(request.url);
+      const idStr = searchParams.get('id');
+      if (!idStr) {
+        return NextResponse.json({ message: 'Missing id parameter' }, { status: 400 });
+      }
+      const id = parseInt(idStr, 10);
+      try {
+        await executeWithDbFallback(
+          async () => { await prisma.faq.delete({ where: { id } }); },
+          async () => {
+            const index = mockDb.faqs.findIndex((f) => f.id === id);
+            if (index === -1) throw new Error('FAQ not found');
+            mockDb.faqs.splice(index, 1);
+          }
+        );
+        return NextResponse.json({ success: true, message: 'FAQ deleted successfully.' });
+      } catch (err: any) {
+        return NextResponse.json({ message: err.message || 'Failed to delete FAQ' }, { status: 400 });
       }
     }
 

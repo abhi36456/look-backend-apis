@@ -21,6 +21,12 @@ const openApiSpec = {
     { name: 'Client Profile', description: 'Client profile details and settings' },
     { name: 'Verification', description: 'Phone OTP verification APIs' },
     { name: 'Provider Onboarding Flow', description: 'Step-by-step onboarding APIs (Steps 1 to 5) for service providers' },
+    { name: 'Reviews & Ratings', description: 'Provider review and rating submission APIs' },
+    { name: 'Vouchers & Promo Codes', description: 'Available discount voucher and promo code APIs' },
+    { name: 'CMS & Legal Pages', description: 'CMS legal pages content (Terms, Privacy, Refund, Payment, Guidelines)' },
+    { name: 'App Settings & Version', description: 'Mobile app version requirement settings API' },
+    { name: 'FAQs', description: 'Frequently Asked Questions list API for app' },
+    { name: 'Report & Issues', description: 'User feedback and app issues report submission API' },
   ],
   components: {
     securitySchemes: {
@@ -464,6 +470,37 @@ const openApiSpec = {
         description: 'Returns list of all registered service providers. Can optionally filter by main category ID or name.',
         parameters: [
           {
+            name: 'search',
+            in: 'query',
+            required: false,
+            description: 'Search by salon name, freelancer name, service title, or category title',
+            schema: {
+              type: 'string',
+              example: 'Glamour',
+            },
+          },
+          {
+            name: 'providerType',
+            in: 'query',
+            required: false,
+            description: 'Filter by provider type: salon or freelancer',
+            schema: {
+              type: 'string',
+              enum: ['salon', 'freelancer'],
+              example: 'salon',
+            },
+          },
+          {
+            name: 'service',
+            in: 'query',
+            required: false,
+            description: 'Filter by specific service name',
+            schema: {
+              type: 'string',
+              example: 'Haircut',
+            },
+          },
+          {
             name: 'categoryId',
             in: 'query',
             required: false,
@@ -477,7 +514,7 @@ const openApiSpec = {
             name: 'sortBy',
             in: 'query',
             required: false,
-            description: 'Sort providers by Nearest, Earliest, or Ratings (Nearest calculates distance using lat/long coordinates)',
+            description: 'Sort providers by Nearest, Earliest, or Ratings',
             schema: {
               type: 'string',
               enum: ['Nearest', 'Earliest', 'Ratings'],
@@ -924,8 +961,9 @@ const openApiSpec = {
         summary: 'Get Provider Available Slots for Specific Date',
         description: 'Returns only the available (non-booked, active) slots for a provider on a specific date.',
         parameters: [
-          { name: 'providerId', in: 'query', required: true, schema: { type: 'integer' } },
-          { name: 'date', in: 'query', required: true, description: 'YYYY-MM-DD format', schema: { type: 'string' } }
+          { name: 'providerId', in: 'query', required: true, schema: { type: 'integer', example: 2 } },
+          { name: 'date', in: 'query', required: true, description: 'YYYY-MM-DD format', schema: { type: 'string', example: '2026-07-23' } },
+          { name: 'currentTime', in: 'query', required: false, description: 'Client current time (e.g. "14:30" or ISO string) to filter out past slots for today', schema: { type: 'string', example: '14:30' } }
         ],
         responses: {
           200: { description: 'Success' }
@@ -1388,6 +1426,316 @@ const openApiSpec = {
           200: { description: 'Onboarding complete and profile finalized' },
         },
       },
+    },
+    '/clients/reviews': {
+      post: {
+        tags: ['Reviews & Ratings'],
+        summary: 'Submit Rating & Review for Provider',
+        description: 'Submits a 1-5 star rating and optional text review message for a provider and optional service. Updates provider rating in real-time.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['providerId', 'rating'],
+                properties: {
+                  providerId: { type: 'integer', example: 2, description: 'Provider User ID' },
+                  serviceId: { type: 'integer', example: 1, nullable: true, description: 'Optional Service ID' },
+                  rating: { type: 'integer', minimum: 1, maximum: 5, example: 5, description: 'Rating score from 1 to 5' },
+                  comment: { type: 'string', example: 'Excellent haircut and great attention to detail!', description: 'Optional review text' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Review submitted successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    review: {
+                      type: 'object',
+                      properties: {
+                        id: { type: 'integer' },
+                        clientId: { type: 'integer' },
+                        providerId: { type: 'integer' },
+                        rating: { type: 'integer' },
+                        comment: { type: 'string' },
+                        createdAt: { type: 'string' }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          400: { description: 'Missing required fields' },
+          401: { description: 'Unauthorized access' }
+        }
+      }
+    },
+    '/clients/providers/reviews': {
+      get: {
+        tags: ['Reviews & Ratings'],
+        summary: 'Get Reviews & Ratings for Provider',
+        description: 'Returns list of reviews and aggregated rating summary for a provider.',
+        parameters: [
+          {
+            name: 'providerId',
+            in: 'query',
+            required: true,
+            schema: { type: 'integer', example: 2 },
+            description: 'Provider User ID'
+          }
+        ],
+        responses: {
+          200: {
+            description: 'Provider reviews retrieved successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    rating: { type: 'number', example: 4.8 },
+                    totalReviews: { type: 'integer', example: 15 },
+                    totalReviewsText: { type: 'string', example: '15 reviews' },
+                    list: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          id: { type: 'integer' },
+                          name: { type: 'string', example: 'Sarah C.' },
+                          initials: { type: 'string', example: 'SC' },
+                          rating: { type: 'integer', example: 5 },
+                          comment: { type: 'string', example: 'Great service!' },
+                          timeAgo: { type: 'string', example: '2 days ago' }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/clients/vouchers': {
+      get: {
+        tags: ['Vouchers & Promo Codes'],
+        summary: 'Get List of Active Promo / Voucher Codes',
+        description: 'Returns list of active promotional discount codes available for clients.',
+        responses: {
+          200: {
+            description: 'Promo codes retrieved successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'integer', example: 1 },
+                      code: { type: 'string', example: 'WELCOME10' },
+                      title: { type: 'string', example: '$10 Off First Order' },
+                      amount: { type: 'number', example: 10.0 },
+                      isActive: { type: 'boolean', example: true }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/cms/{slug}': {
+      get: {
+        tags: ['CMS & Legal Pages'],
+        summary: 'Get CMS Legal Page Content by Slug',
+        description: 'Fetches HTML text content for legal and policy pages.',
+        parameters: [
+          {
+            name: 'slug',
+            in: 'path',
+            required: true,
+            schema: {
+              type: 'string',
+              enum: ['terms', 'privacy-policy', 'refund-policy', 'payment-policy', 'community-guidelines'],
+              example: 'terms'
+            },
+            description: 'CMS page slug identifier'
+          }
+        ],
+        responses: {
+          200: {
+            description: 'CMS page content retrieved successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    id: { type: 'integer' },
+                    slug: { type: 'string', example: 'terms' },
+                    title: { type: 'string', example: 'Terms & Conditions' },
+                    content: { type: 'string', example: '<p>Our terms of service...</p>' },
+                    updatedAt: { type: 'string', format: 'date-time' }
+                  }
+                }
+              }
+            }
+          },
+          404: { description: 'CMS page not found' }
+        }
+      }
+    },
+    '/app-version': {
+      get: {
+        tags: ['App Settings & Version'],
+        summary: 'Get Mobile App Current & Minimum Version Requirements',
+        description: 'Returns required Android/iOS versions and force update flags.',
+        responses: {
+          200: {
+            description: 'App version requirements retrieved successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    androidVersion: { type: 'string', example: '1.2.0' },
+                    iosVersion: { type: 'string', example: '1.2.0' },
+                    androidMinVersion: { type: 'string', example: '1.0.0' },
+                    iosMinVersion: { type: 'string', example: '1.0.0' },
+                    androidForceUpdate: { type: 'boolean', example: false },
+                    iosForceUpdate: { type: 'boolean', example: false }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/faqs': {
+      get: {
+        tags: ['FAQs'],
+        summary: 'Get List of Frequently Asked Questions',
+        description: 'Returns list of admin-curated questions and answers for the mobile app.',
+        responses: {
+          200: {
+            description: 'FAQs retrieved successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'integer', example: 1 },
+                      question: { type: 'string', example: 'How do I cancel a booking?' },
+                      answer: { type: 'string', example: 'You can cancel any booking up to 2 hours before start time.' },
+                      category: { type: 'string', example: 'General' },
+                      order: { type: 'integer', example: 1 }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/reports': {
+      post: {
+        tags: ['Report & Issues'],
+        summary: 'Submit App Feedback or Issue Report',
+        description: 'Allows user to submit app feedback or bug reports with optional file attachments via multipart form-data or JSON.',
+        requestBody: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                required: ['title', 'message'],
+                properties: {
+                  title: { type: 'string', example: 'App Crashes on Checkout' },
+                  message: { type: 'string', example: 'When I tap confirm booking, the app closes unexpectedly.' },
+                  attachments: {
+                    type: 'array',
+                    items: { type: 'string', format: 'binary' },
+                    description: 'Optional screenshot files (PNG/JPG)'
+                  }
+                }
+              }
+            },
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['title', 'message'],
+                properties: {
+                  title: { type: 'string', example: 'Payment Failure' },
+                  message: { type: 'string', example: 'Card transaction fails repeatedly.' },
+                  attachments: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    example: ['https://.../screenshot.png']
+                  }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: 'Report submitted successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    report: {
+                      type: 'object',
+                      properties: {
+                        id: { type: 'integer' },
+                        title: { type: 'string' },
+                        message: { type: 'string' },
+                        attachments: { type: 'string', example: '["/uploads/reports/report_12345.png"]' },
+                        status: { type: 'string', example: 'open' },
+                        createdAt: { type: 'string' }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          400: { description: 'Title and message are required' }
+        }
+      },
+      get: {
+        tags: ['Report & Issues'],
+        summary: 'Get User Submitted Issue Reports',
+        description: 'Returns issue reports filterable by status (open/closed).',
+        parameters: [
+          {
+            name: 'status',
+            in: 'query',
+            required: false,
+            schema: { type: 'string', enum: ['open', 'closed'], example: 'open' },
+            description: 'Filter reports by status'
+          }
+        ],
+        responses: {
+          200: { description: 'Reports list retrieved successfully' }
+        }
+      }
     },
   },
 };
