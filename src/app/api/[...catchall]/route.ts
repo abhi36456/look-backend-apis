@@ -117,9 +117,24 @@ const mockDb = {
       content: '<h1>Refund Policy</h1><p>Refund requests must be submitted within 24 hours of scheduled appointment. Cancellation fees may apply according to provider policies.</p>'
     },
     {
-      slug: 'payment-policy',
-      title: 'Payment Policy',
-      content: '<h1>Payment Policy</h1><p>All payments are securely processed. We accept credit cards, debit cards, and digital wallet options.</p>'
+      slug: 'client-payment-policy',
+      title: 'Client Payment Policy',
+      content: '<h1>Client Payment Policy</h1><p>All client payments are securely processed. We accept credit cards, debit cards, and digital wallet options.</p>'
+    },
+    {
+      slug: 'provider-payment-policy',
+      title: 'Provider Payment Policy',
+      content: '<h1>Provider Payment Policy</h1><p>Provider payout terms, commission fees, and disbursement schedules are detailed here.</p>'
+    },
+    {
+      slug: 'client-faqs',
+      title: 'Client FAQ',
+      content: '<h1>Client FAQ</h1><p><b>Q: How do I book an appointment?</b><br>A: Select a provider, pick your service and time slot, then confirm.<br><br><b>Q: How can I cancel or reschedule?</b><br>A: Go to My Bookings in your profile to reschedule or cancel.</p>'
+    },
+    {
+      slug: 'provider-faqs',
+      title: 'Provider FAQ',
+      content: '<h1>Provider FAQ</h1><p><b>Q: How do I receive booking notifications?</b><br>A: Notifications are sent via push notifications and sms.<br><br><b>Q: How do I set my schedule?</b><br>A: Configure your working hours under Schedule Settings.</p>'
     },
     {
       slug: 'community-guidelines',
@@ -127,22 +142,14 @@ const mockDb = {
       content: '<h1>Community Guidelines</h1><p>We strive to maintain a respectful, safe, and clean environment for both clients and beauty professionals.</p>'
     }
   ] as any[],
-  faqs: [
-    { id: 1, question: 'How do I book an appointment?', answer: 'Select a salon or freelancer, choose your service and time slot, then confirm booking.', category: 'General', order: 1 },
-    { id: 2, question: 'Can I cancel or reschedule my booking?', answer: 'Yes, go to My Bookings in your profile to reschedule or cancel at least 2 hours prior.', category: 'Bookings', order: 2 },
-    { id: 3, question: 'How are payments handled?', answer: 'Payments can be made online via secure gateway or directly at the salon if allowed.', category: 'Payments', order: 3 }
-  ] as any[],
+  faqs: [] as any[],
   issueReports: [
     { id: 1, userId: 3, title: 'App Crash on Checkout', message: 'When selecting payment method, the screen froze.', attachments: [], status: 'open', createdAt: new Date().toISOString() },
     { id: 2, userId: 3, title: 'Location Map Not Loading', message: 'Map view is showing blank box.', attachments: [], status: 'closed', createdAt: new Date().toISOString() }
   ] as any[],
   appVersions: {
     androidVersion: '1.0.0',
-    iosVersion: '1.0.0',
-    androidMinVersion: '1.0.0',
-    iosMinVersion: '1.0.0',
-    androidForceUpdate: false,
-    iosForceUpdate: false
+    iosVersion: '1.0.0'
   },
   twilioSettings: {
     activeMode: 'staging',
@@ -219,7 +226,8 @@ async function executeWithDbFallback<T>(
 
 // Token helper (Base64 encoding/decoding simulation of JWT)
 function generateToken(userId: number, email: string, role: string) {
-  const payload = { userId, email, role, exp: Date.now() + 3600000 * 24 };
+  // Token does not expire automatically (100 years expiration horizon)
+  const payload = { userId, email, role, exp: Date.now() + 1000 * 60 * 60 * 24 * 365 * 100 };
   return Buffer.from(JSON.stringify(payload)).toString('base64');
 }
 
@@ -1396,8 +1404,8 @@ export async function GET(
       }
     }
 
-    // Admin Voucher CRUD - GET list or single
-    if (path === 'admin/settings/vouchers') {
+    // Admin Promo Code CRUD - GET list or single
+    if (path === 'admin/settings/promocodes' || path === 'admin/settings/vouchers') {
       const auth = await getAuthenticatedUser(request);
       if (!auth || auth.role !== 'admin') {
         return NextResponse.json({ message: 'Forbidden: Requires admin role' }, { status: 403 });
@@ -1616,41 +1624,7 @@ export async function GET(
       }
     }
 
-    // 2. Client Provider Reviews GET (/api/clients/providers/reviews or /api/clients/reviews)
-    if (path === 'clients/providers/reviews' || path === 'client/providers/reviews' || path === 'clients/reviews' || path === 'client/reviews') {
-      const { searchParams } = new URL(request.url);
-      const providerIdStr = searchParams.get('providerId') || searchParams.get('providerProfileId');
-      if (!providerIdStr) {
-        return NextResponse.json({ message: 'Missing providerId parameter' }, { status: 400 });
-      }
-      const providerId = parseInt(providerIdStr, 10);
-      try {
-        const reviews = await executeWithDbFallback(
-          async () => await prisma.review.findMany({ where: { providerId }, include: { client: { select: { name: true, email: true } } }, orderBy: { createdAt: 'desc' } }),
-          async () => mockDb.reviews.filter((r) => r.providerId === providerId)
-        );
 
-        if (reviews && reviews.length > 0) {
-          const avgRating = Number((reviews.reduce((acc: number, r: any) => acc + r.rating, 0) / reviews.length).toFixed(1));
-          return NextResponse.json({
-            rating: avgRating,
-            totalReviews: reviews.length,
-            totalReviewsText: `${reviews.length} reviews`,
-            list: reviews.map((r: any) => ({
-              id: r.id,
-              name: r.client?.name || 'Client',
-              initials: (r.client?.name || 'CL').split(' ').map((n: string) => n[0]).join('').toUpperCase(),
-              timeAgo: new Date(r.createdAt).toLocaleDateString(),
-              rating: r.rating,
-              comment: r.comment || ''
-            }))
-          });
-        }
-        return NextResponse.json(DEFAULT_DUMMY_REVIEWS);
-      } catch (err: any) {
-        return NextResponse.json({ message: err.message || 'Failed to fetch reviews' }, { status: 400 });
-      }
-    }
 
     // 5. CMS Pages GET endpoints (/api/cms/pages, /api/cms/:slug, /api/cms/terms, etc.)
     if (path.startsWith('cms/') || path === 'cms' || path === 'admin/cms-pages') {
@@ -1659,6 +1633,8 @@ export async function GET(
       if (slug === 'pages' && parts.length > 2) {
         slug = parts[2];
       }
+      if (slug === 'client-faq') slug = 'client-faqs';
+      if (slug === 'provider-faq') slug = 'provider-faqs';
 
       if (slug && slug !== 'pages') {
         const page = await executeWithDbFallback(
@@ -1668,7 +1644,22 @@ export async function GET(
         if (!page) {
           return NextResponse.json({ message: 'CMS page not found' }, { status: 404 });
         }
-        return NextResponse.json(page);
+        let faqs: { question: string; answer: string }[] = [];
+        try {
+          if (page.content && page.content.trim().startsWith('[')) {
+            faqs = JSON.parse(page.content);
+          } else if (page.content) {
+            const qMatches = [...page.content.matchAll(/<b>Q:\s*(.*?)<\/b>/gi)];
+            const aMatches = [...page.content.matchAll(/A:\s*(.*?)(?=<br>|<\/p>|$)/gi)];
+            for (let i = 0; i < Math.max(qMatches.length, aMatches.length); i++) {
+              faqs.push({
+                question: qMatches[i] ? qMatches[i][1].replace(/<[^>]+>/g, '').trim() : '',
+                answer: aMatches[i] ? aMatches[i][1].replace(/<[^>]+>/g, '').trim() : ''
+              });
+            }
+          }
+        } catch { }
+        return NextResponse.json({ ...page, faqs });
       } else {
         const pages = await executeWithDbFallback(
           async () => await prisma.cmsPage.findMany(),
@@ -2187,7 +2178,8 @@ export async function POST(
 
     // 1. Sign Up (Common Register /api/auth/register)
     if (path === 'auth/register') {
-      const { email, password } = body as any;
+      const { email, password, fcmToken, fcm_token } = body as any;
+      const userFcmToken = fcmToken || fcm_token || null;
       if (!email || typeof email !== 'string' || !email.trim()) {
         return NextResponse.json({ message: 'Email is required' }, { status: 400 });
       }
@@ -2220,6 +2212,7 @@ export async function POST(
                 password: hashPassword(password),
                 name: "",
                 role: "",
+                fcmToken: userFcmToken
               },
             });
             const token = generateToken(user.id, user.email, user.role);
@@ -2240,6 +2233,7 @@ export async function POST(
               onboardingCompleted: false,
               socialKey: null,
               socialType: null,
+              fcmToken: userFcmToken,
               createdAt: new Date(),
             };
             mockDb.users.push(newUser);
@@ -2263,7 +2257,8 @@ export async function POST(
 
     // 2. Sign In (Common Login /api/auth/login)
     if (path === 'auth/login') {
-      const { email, password } = body as any;
+      const { email, password, fcmToken, fcm_token } = body as any;
+      const userFcmToken = fcmToken || fcm_token || null;
       if (!email || !password) {
         return NextResponse.json({ message: 'Missing fields' }, { status: 400 });
       }
@@ -2281,14 +2276,20 @@ export async function POST(
                     name: 'System Admin',
                     role: 'admin',
                     onboardingCompleted: true,
+                    fcmToken: userFcmToken
                   },
+                });
+              } else if (userFcmToken) {
+                adminUser = await prisma.user.update({
+                  where: { id: adminUser.id },
+                  data: { fcmToken: userFcmToken }
                 });
               }
               if (adminUser.password !== hashPassword(password)) throw new Error('Invalid credentials');
               const token = generateToken(adminUser.id, adminUser.email, adminUser.role);
               return { token, user: adminUser };
             }
-            const user = await prisma.user.findUnique({
+            let user = await prisma.user.findUnique({
               where: { email },
               include: {
                 providerProfile: {
@@ -2298,6 +2299,18 @@ export async function POST(
               },
             });
             if (!user || user.password !== hashPassword(password)) throw new Error('Invalid credentials');
+            if (userFcmToken) {
+              user = await prisma.user.update({
+                where: { id: user.id },
+                data: { fcmToken: userFcmToken },
+                include: {
+                  providerProfile: {
+                    include: { services: true, amenities: true },
+                  },
+                  clientProfile: true,
+                },
+              });
+            }
             const token = generateToken(user.id, user.email, user.role);
             return { token, user };
           },
@@ -2403,7 +2416,8 @@ export async function POST(
 
     // 3.5. Social Login (/api/auth/social-login)
     if (path === 'auth/social-login') {
-      const { social_key, social_type, username, email } = body as any;
+      const { social_key, social_type, username, email, fcmToken, fcm_token } = body as any;
+      const userFcmToken = fcmToken || fcm_token || null;
       if (!social_key || !social_type || !email) {
         return NextResponse.json({ message: 'Missing fields: social_key, social_type, and email are required' }, { status: 400 });
       }
@@ -2439,6 +2453,7 @@ export async function POST(
                     socialKey: social_key,
                     socialType: social_type,
                     name: existingEmailUser.name || username || "",
+                    ...(userFcmToken ? { fcmToken: userFcmToken } : {})
                   },
                   include: {
                     providerProfile: {
@@ -2456,6 +2471,7 @@ export async function POST(
                     role: "",
                     socialKey: social_key,
                     socialType: social_type,
+                    fcmToken: userFcmToken
                   },
                   include: {
                     providerProfile: {
@@ -2464,6 +2480,16 @@ export async function POST(
                   },
                 });
               }
+            } else if (userFcmToken) {
+              user = await prisma.user.update({
+                where: { id: user.id },
+                data: { fcmToken: userFcmToken },
+                include: {
+                  providerProfile: {
+                    include: { services: true, amenities: true },
+                  },
+                },
+              });
             }
 
             const token = generateToken(user.id, user.email, user.role);
@@ -4013,8 +4039,8 @@ export async function POST(
       }
     }
 
-    // POST Admin Voucher - Create
-    if (path === 'admin/settings/vouchers') {
+    // POST Admin Promo Code - Create
+    if (path === 'admin/settings/promocodes' || path === 'admin/settings/vouchers') {
       const auth = await getAuthenticatedUser(request);
       if (!auth || auth.role !== 'admin') {
         return NextResponse.json({ message: 'Forbidden: Requires admin role' }, { status: 403 });
@@ -4079,7 +4105,8 @@ export async function POST(
         return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
       }
 
-      const { serviceIds, numberOfPeople, tipType, tipAmount, voucherCode } = body as any;
+      const { serviceIds, numberOfPeople, tipType, tipAmount, promoCode, promo_code, voucherCode, voucher_code } = body as any;
+      const targetPromoCode = promoCode || promo_code || voucherCode || voucher_code;
       if (!Array.isArray(serviceIds) || serviceIds.length === 0) {
         return NextResponse.json({ message: 'At least one service is required' }, { status: 400 });
       }
@@ -4108,26 +4135,30 @@ export async function POST(
         }
 
         let discount = 0;
-        let isValidVoucher = false;
-        let voucherMessage = 'No voucher applied';
+        let isValidPromoCode = false;
+        let promoCodeMessage = 'No promo code applied';
 
-        if (voucherCode) {
-          const normCode = String(voucherCode).toUpperCase().trim();
-          const voucher = await executeWithDbFallback(
-            async () => await prisma.voucher.findUnique({ where: { code: normCode } }),
+        if (targetPromoCode) {
+          const normCode = String(targetPromoCode).toUpperCase().trim();
+          const promoItem = await executeWithDbFallback(
+            async () => {
+              const pc = await prisma.promoCode.findUnique({ where: { code: normCode } }).catch(() => null);
+              if (pc) return pc;
+              return await prisma.voucher.findUnique({ where: { code: normCode } }).catch(() => null);
+            },
             async () => mockDb.vouchers.find((v) => v.code === normCode) || null
           );
 
-          if (voucher) {
-            if (voucher.isActive) {
-              discount = Math.round((serviceAmount * (voucher.amount / 100)) * 100) / 100;
-              isValidVoucher = true;
-              voucherMessage = `Voucher '${voucher.code}' (${voucher.amount}%) applied successfully.`;
+          if (promoItem) {
+            if (promoItem.isActive) {
+              discount = Math.round((serviceAmount * (promoItem.amount / 100)) * 100) / 100;
+              isValidPromoCode = true;
+              promoCodeMessage = `Promo Code '${promoItem.code}' (${promoItem.amount}%) applied successfully.`;
             } else {
-              voucherMessage = 'Voucher code is inactive';
+              promoCodeMessage = 'Promo code is inactive';
             }
           } else {
-            voucherMessage = 'Invalid voucher code';
+            promoCodeMessage = 'Invalid promo code';
           }
         }
 
@@ -4142,10 +4173,13 @@ export async function POST(
           numberOfPeople: numPeople,
           serviceAmount,
           tipAmount: calculatedTip,
+          promoDiscount: discount,
           voucherDiscount: discount,
           grandTotal,
-          isValidVoucher,
-          voucherMessage
+          isValidPromoCode,
+          isValidVoucher: isValidPromoCode,
+          promoCodeMessage,
+          voucherMessage: promoCodeMessage
         });
       } catch (err: any) {
         return NextResponse.json({ message: err.message || 'Failed to calculate summary' }, { status: 400 });
@@ -4162,7 +4196,8 @@ export async function POST(
         return NextResponse.json({ message: 'Forbidden: Requires client role' }, { status: 403 });
       }
 
-      const { providerId, serviceIds, numberOfPeople, date, timeSlot, tipType, tipAmount, voucherCode } = body as any;
+      const { providerId, serviceIds, numberOfPeople, date, timeSlot, tipType, tipAmount, promoCode, promo_code, voucherCode, voucher_code } = body as any;
+      const targetPromoCode = promoCode || promo_code || voucherCode || voucher_code;
 
       if (!providerId || !Array.isArray(serviceIds) || serviceIds.length === 0 || !date || !timeSlot) {
         return NextResponse.json({ message: 'Missing required booking fields' }, { status: 400 });
@@ -4264,20 +4299,24 @@ export async function POST(
         }
 
         let discount = 0;
-        if (voucherCode) {
-          const normCode = String(voucherCode).toUpperCase().trim();
-          const voucher = await executeWithDbFallback(
-            async () => await prisma.voucher.findUnique({ where: { code: normCode } }),
-            async () => mockDb.vouchers.find((v) => v.code === normCode) || null
+        const appliedCode = targetPromoCode ? String(targetPromoCode).toUpperCase().trim() : null;
+        if (appliedCode) {
+          const promoItem = await executeWithDbFallback(
+            async () => {
+              const pc = await prisma.promoCode.findUnique({ where: { code: appliedCode } }).catch(() => null);
+              if (pc) return pc;
+              return await prisma.voucher.findUnique({ where: { code: appliedCode } }).catch(() => null);
+            },
+            async () => mockDb.vouchers.find((v) => v.code === appliedCode) || null
           );
-          if (voucher) {
-            if (voucher.isActive) {
-              discount = Math.round((serviceAmount * (voucher.amount / 100)) * 100) / 100;
+          if (promoItem) {
+            if (promoItem.isActive) {
+              discount = Math.round((serviceAmount * (promoItem.amount / 100)) * 100) / 100;
             } else {
-              return NextResponse.json({ message: 'Voucher code is inactive' }, { status: 400 });
+              return NextResponse.json({ message: 'Promo code is inactive' }, { status: 400 });
             }
           } else {
-            return NextResponse.json({ message: 'Invalid voucher code' }, { status: 400 });
+            return NextResponse.json({ message: 'Invalid promo code' }, { status: 400 });
           }
         }
         if (discount > serviceAmount) {
@@ -4298,8 +4337,10 @@ export async function POST(
                 status: 'pending',
                 tipAmount: calculatedTip,
                 tipPercentage: tipPct,
-                voucherCode: voucherCode ? String(voucherCode).toUpperCase().trim() : null,
+                voucherCode: appliedCode,
                 voucherDiscount: discount,
+                promoCode: appliedCode,
+                promoDiscount: discount,
                 serviceAmount,
                 grandTotal,
                 services: {
@@ -4377,26 +4418,57 @@ export async function POST(
         return NextResponse.json({ message: 'providerId and rating are required' }, { status: 400 });
       }
 
+      const numProviderId = Number(providerId);
+      const numServiceId = serviceId ? Number(serviceId) : null;
       const reviewComment = comment || message || '';
+
       try {
         const newReview = await executeWithDbFallback<any>(
           async () => {
+            // Pre-verify provider exists
+            const providerExists = await prisma.user.findUnique({
+              where: { id: numProviderId }
+            });
+            if (!providerExists) {
+              throw new Error('Provider not found');
+            }
+
+            // Pre-verify service exists if serviceId is passed
+            if (numServiceId !== null) {
+              const serviceExists = await prisma.providerService.findUnique({
+                where: { id: numServiceId }
+              });
+              if (!serviceExists) {
+                throw new Error('Invalid service ID. Service not found.');
+              }
+            }
+
             return await prisma.review.create({
               data: {
                 clientId: auth.userId,
-                providerId: Number(providerId),
-                serviceId: serviceId ? Number(serviceId) : null,
+                providerId: numProviderId,
+                serviceId: numServiceId,
                 rating: Number(rating),
                 comment: reviewComment
               }
             });
           },
           async () => {
+            const providerExists = mockDb.users.some((u) => u.id === numProviderId);
+            if (!providerExists) {
+              throw new Error('Provider not found');
+            }
+            if (numServiceId !== null) {
+              const serviceExists = mockDb.services.some((s) => s.id === numServiceId);
+              if (!serviceExists) {
+                throw new Error('Invalid service ID. Service not found.');
+              }
+            }
             const rev = {
               id: mockDb.reviews.length + 1,
               clientId: auth.userId,
-              providerId: Number(providerId),
-              serviceId: serviceId ? Number(serviceId) : null,
+              providerId: numProviderId,
+              serviceId: numServiceId,
               rating: Number(rating),
               comment: reviewComment,
               createdAt: new Date().toISOString()
@@ -4407,7 +4479,19 @@ export async function POST(
         );
         return NextResponse.json({ success: true, review: newReview });
       } catch (err: any) {
-        return NextResponse.json({ message: err.message || 'Failed to submit review' }, { status: 400 });
+        let cleanMsg = err.message || 'Failed to submit review';
+        if (err.code === 'P2003' || cleanMsg.includes('Foreign key constraint failed')) {
+          if (cleanMsg.includes('serviceId')) {
+            cleanMsg = 'Invalid service ID. Service not found.';
+          } else if (cleanMsg.includes('providerId')) {
+            cleanMsg = 'Provider not found.';
+          } else {
+            cleanMsg = 'Invalid provider or service reference.';
+          }
+        } else if (err.code === 'P2025' || cleanMsg.includes('Record to update not found')) {
+          cleanMsg = 'Referenced record not found.';
+        }
+        return NextResponse.json({ message: cleanMsg }, { status: 400 });
       }
     }
 
@@ -4456,15 +4540,11 @@ export async function POST(
       if (!auth || auth.role !== 'admin') {
         return NextResponse.json({ message: 'Forbidden: Requires admin role' }, { status: 403 });
       }
-      const { androidVersion, iosVersion, androidMinVersion, iosMinVersion, androidForceUpdate, iosForceUpdate } = body as any;
+      const { androidVersion, iosVersion } = body as any;
 
       const appVersions = {
         androidVersion: androidVersion || '1.0.0',
-        iosVersion: iosVersion || '1.0.0',
-        androidMinVersion: androidMinVersion || androidVersion || '1.0.0',
-        iosMinVersion: iosMinVersion || iosVersion || '1.0.0',
-        androidForceUpdate: Boolean(androidForceUpdate),
-        iosForceUpdate: Boolean(iosForceUpdate)
+        iosVersion: iosVersion || '1.0.0'
       };
 
       try {

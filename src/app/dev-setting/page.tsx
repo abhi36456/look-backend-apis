@@ -49,7 +49,7 @@ export default function DevSettingPage() {
         {/* Header */}
         <div className="flex flex-col items-center text-center space-y-3">
           <div className="w-12 h-12 rounded-2xl flex items-center justify-center overflow-hidden bg-gray-950/40 border border-gray-900">
-            <img src="/assets/images/Look_Clean_logo.png" alt="LookClean Logo" className="w-full h-full object-cover" />
+            <img src="/assets/images/Look_Clean_New_Logo.png" alt="LookClean Logo" className="w-full h-full object-cover" />
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-2">
             Look<span className="text-primary">Clean</span> Dev Center

@@ -3,12 +3,12 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 
-export default function CommunityGuidelinesPage() {
+export default function ClientPaymentPolicyPage() {
   const [data, setData] = useState<{ title: string; content: string } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/cms/community-guidelines')
+    fetch('/api/cms/client-payment-policy')
       .then((res) => res.json())
       .then((d) => {
         if (d && d.content) setData(d);
@@ -39,18 +39,18 @@ export default function CommunityGuidelinesPage() {
       <main className="max-w-4xl w-full mx-auto px-6 py-12 flex-grow">
         <div className="bg-gray-900/40 border border-gray-850 p-8 sm:p-12 rounded-3xl backdrop-blur-sm shadow-2xl space-y-6">
           <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight border-b border-gray-850 pb-4">
-            {data?.title || 'Community Guidelines'}
+            {data?.title || 'Client Payment Policy'}
           </h1>
 
           {loading ? (
-            <div className="py-12 text-center text-gray-500 text-sm">Loading Community Guidelines...</div>
+            <div className="py-12 text-center text-gray-500 text-sm">Loading Client Payment Policy...</div>
           ) : (
             <div
               className="prose prose-invert prose-amber max-w-none text-gray-300 text-sm leading-relaxed space-y-4"
               dangerouslySetInnerHTML={{
                 __html:
                   data?.content ||
-                  '<h1>Community Guidelines</h1><p>We strive to maintain a respectful, safe, and clean environment for both clients and beauty professionals.</p>'
+                  '<h1>Client Payment Policy</h1><p>Payments for bookings are securely processed at the time of booking or upon service completion according to your chosen payment method.</p>'
               }}
             />
           )}

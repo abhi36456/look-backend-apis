@@ -19,6 +19,7 @@ model User {
   onboardingCompleted Boolean          @default(false)
   socialKey           String?          @unique
   socialType          String?          // "google" | "ios"
+  fcmToken            String?
   createdAt           DateTime         @default(now())
   providerProfile     ProviderProfile?
   clientProfile       ClientProfile?
@@ -155,6 +156,8 @@ model Booking {
   tipPercentage   Float?
   voucherCode     String?          @db.VarChar(50)
   voucherDiscount Float            @default(0)
+  promoCode       String?          @db.VarChar(50)
+  promoDiscount   Float            @default(0)
   serviceAmount   Float
   grandTotal      Float
   createdAt       DateTime         @default(now())
@@ -207,6 +210,17 @@ model Voucher {
   createdAt DateTime @default(now())
 
   @@map("vouchers")
+}
+
+model PromoCode {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique @db.VarChar(50)
+  title     String
+  amount    Float
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@map("promo_codes")
 }
 
 model Review {

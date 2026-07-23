@@ -22,10 +22,7 @@ const openApiSpec = {
     { name: 'Verification', description: 'Phone OTP verification APIs' },
     { name: 'Provider Onboarding Flow', description: 'Step-by-step onboarding APIs (Steps 1 to 5) for service providers' },
     { name: 'Reviews & Ratings', description: 'Provider review and rating submission APIs' },
-    { name: 'Vouchers & Promo Codes', description: 'Available discount voucher and promo code APIs' },
-    { name: 'CMS & Legal Pages', description: 'CMS legal pages content (Terms, Privacy, Refund, Payment, Guidelines)' },
-    { name: 'App Settings & Version', description: 'Mobile app version requirement settings API' },
-    { name: 'FAQs', description: 'Frequently Asked Questions list API for app' },
+    { name: 'Settings & FAQ, CMS Page', description: 'Mobile app settings, app version, promo codes, FAQs, and CMS legal pages APIs' },
     { name: 'Report & Issues', description: 'User feedback and app issues report submission API' },
   ],
   components: {
@@ -83,6 +80,7 @@ const openApiSpec = {
                 properties: {
                   email: { type: 'string', example: 'user@lookclean.com' },
                   password: { type: 'string', example: '123456' },
+                  fcmToken: { type: 'string', example: 'fcm_device_token_sample_12345', description: 'Firebase Cloud Messaging push notification token' },
                 },
               },
             },
@@ -125,6 +123,7 @@ const openApiSpec = {
                 properties: {
                   email: { type: 'string', example: 'provider@lookclean.com' },
                   password: { type: 'string', example: '123456' },
+                  fcmToken: { type: 'string', example: 'fcm_device_token_sample_12345', description: 'Firebase Cloud Messaging push notification token' },
                 },
               },
             },
@@ -210,6 +209,7 @@ const openApiSpec = {
                   social_type: { type: 'string', enum: ['google', 'ios'], example: 'google' },
                   username: { type: 'string', example: 'Sarah Connor' },
                   email: { type: 'string', example: 'sarah.connor@gmail.com' },
+                  fcmToken: { type: 'string', example: 'fcm_device_token_sample_12345', description: 'Firebase Cloud Messaging push notification token' },
                 },
               },
             },
@@ -986,6 +986,7 @@ const openApiSpec = {
                   numberOfPeople: { type: 'integer', example: 2 },
                   tipType: { type: 'string', example: '10%' },
                   tipAmount: { type: 'number', example: 0 },
+                  promoCode: { type: 'string', example: 'SAVE10' },
                   voucherCode: { type: 'string', example: 'SAVE10' }
                 }
               }
@@ -1023,6 +1024,7 @@ const openApiSpec = {
                   timeSlot: { type: 'string', example: '10:00 AM' },
                   tipType: { type: 'string', example: '15%' },
                   tipAmount: { type: 'number', example: 0 },
+                  promoCode: { type: 'string', example: 'SAVE10' },
                   voucherCode: { type: 'string', example: 'SAVE10' }
                 }
               }
@@ -1479,45 +1481,21 @@ const openApiSpec = {
         }
       }
     },
-    '/clients/providers/reviews': {
+    '/app-version': {
       get: {
-        tags: ['Reviews & Ratings'],
-        summary: 'Get Reviews & Ratings for Provider',
-        description: 'Returns list of reviews and aggregated rating summary for a provider.',
-        parameters: [
-          {
-            name: 'providerId',
-            in: 'query',
-            required: true,
-            schema: { type: 'integer', example: 2 },
-            description: 'Provider User ID'
-          }
-        ],
+        tags: ['Settings & FAQ, CMS Page'],
+        summary: 'Get Mobile App Current Version Requirements',
+        description: 'Returns required Android/iOS versions for mobile app.',
         responses: {
           200: {
-            description: 'Provider reviews retrieved successfully',
+            description: 'App version requirements retrieved successfully',
             content: {
               'application/json': {
                 schema: {
                   type: 'object',
                   properties: {
-                    rating: { type: 'number', example: 4.8 },
-                    totalReviews: { type: 'integer', example: 15 },
-                    totalReviewsText: { type: 'string', example: '15 reviews' },
-                    list: {
-                      type: 'array',
-                      items: {
-                        type: 'object',
-                        properties: {
-                          id: { type: 'integer' },
-                          name: { type: 'string', example: 'Sarah C.' },
-                          initials: { type: 'string', example: 'SC' },
-                          rating: { type: 'integer', example: 5 },
-                          comment: { type: 'string', example: 'Great service!' },
-                          timeAgo: { type: 'string', example: '2 days ago' }
-                        }
-                      }
-                    }
+                    androidVersion: { type: 'string', example: '1.2.0' },
+                    iosVersion: { type: 'string', example: '1.2.0' }
                   }
                 }
               }
@@ -1526,9 +1504,9 @@ const openApiSpec = {
         }
       }
     },
-    '/clients/vouchers': {
+    '/clients/promocodes': {
       get: {
-        tags: ['Vouchers & Promo Codes'],
+        tags: ['Settings & FAQ, CMS Page'],
         summary: 'Get List of Active Promo / Voucher Codes',
         description: 'Returns list of active promotional discount codes available for clients.',
         responses: {
@@ -1557,9 +1535,9 @@ const openApiSpec = {
     },
     '/cms/{slug}': {
       get: {
-        tags: ['CMS & Legal Pages'],
+        tags: ['Settings & FAQ, CMS Page'],
         summary: 'Get CMS Legal Page Content by Slug',
-        description: 'Fetches HTML text content for legal and policy pages.',
+        description: 'Fetches HTML text content and structured Q&A data for legal, policy, and FAQ pages.',
         parameters: [
           {
             name: 'slug',
@@ -1567,10 +1545,19 @@ const openApiSpec = {
             required: true,
             schema: {
               type: 'string',
-              enum: ['terms', 'privacy-policy', 'refund-policy', 'payment-policy', 'community-guidelines'],
+              enum: [
+                'terms',
+                'privacy-policy',
+                'refund-policy',
+                'client-payment-policy',
+                'provider-payment-policy',
+                'client-faqs',
+                'provider-faqs',
+                'community-guidelines'
+              ],
               example: 'terms'
             },
-            description: 'CMS page slug identifier'
+            description: 'CMS page slug identifier (e.g. terms, client-faqs, provider-faqs, privacy-policy)'
           }
         ],
         responses: {
@@ -1585,6 +1572,17 @@ const openApiSpec = {
                     slug: { type: 'string', example: 'terms' },
                     title: { type: 'string', example: 'Terms & Conditions' },
                     content: { type: 'string', example: '<p>Our terms of service...</p>' },
+                    faqs: {
+                      type: 'array',
+                      description: 'Parsed Q&A items array (populated when viewing client-faq or provider-faq)',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          question: { type: 'string', example: 'How do I book an appointment?' },
+                          answer: { type: 'string', example: 'Select a salon or freelancer, choose your service and time slot, then confirm.' }
+                        }
+                      }
+                    },
                     updatedAt: { type: 'string', format: 'date-time' }
                   }
                 }
@@ -1592,62 +1590,6 @@ const openApiSpec = {
             }
           },
           404: { description: 'CMS page not found' }
-        }
-      }
-    },
-    '/app-version': {
-      get: {
-        tags: ['App Settings & Version'],
-        summary: 'Get Mobile App Current & Minimum Version Requirements',
-        description: 'Returns required Android/iOS versions and force update flags.',
-        responses: {
-          200: {
-            description: 'App version requirements retrieved successfully',
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    androidVersion: { type: 'string', example: '1.2.0' },
-                    iosVersion: { type: 'string', example: '1.2.0' },
-                    androidMinVersion: { type: 'string', example: '1.0.0' },
-                    iosMinVersion: { type: 'string', example: '1.0.0' },
-                    androidForceUpdate: { type: 'boolean', example: false },
-                    iosForceUpdate: { type: 'boolean', example: false }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    '/faqs': {
-      get: {
-        tags: ['FAQs'],
-        summary: 'Get List of Frequently Asked Questions',
-        description: 'Returns list of admin-curated questions and answers for the mobile app.',
-        responses: {
-          200: {
-            description: 'FAQs retrieved successfully',
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      id: { type: 'integer', example: 1 },
-                      question: { type: 'string', example: 'How do I cancel a booking?' },
-                      answer: { type: 'string', example: 'You can cancel any booking up to 2 hours before start time.' },
-                      category: { type: 'string', example: 'General' },
-                      order: { type: 'integer', example: 1 }
-                    }
-                  }
-                }
-              }
-            }
-          }
         }
       }
     },

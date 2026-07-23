@@ -64,16 +64,16 @@ export default function AdminPage() {
   const activeTab: AdminTabType = pathname.endsWith('/users')
     ? 'users'
     : pathname.endsWith('/vouchers')
-    ? 'vouchers'
-    : pathname.endsWith('/cms')
-    ? 'cms'
-    : pathname.endsWith('/faqs')
-    ? 'faqs'
-    : pathname.endsWith('/reports')
-    ? 'reports'
-    : pathname.endsWith('/settings')
-    ? 'settings'
-    : 'dashboard';
+      ? 'vouchers'
+      : pathname.endsWith('/cms')
+        ? 'cms'
+        : pathname.endsWith('/faqs')
+          ? 'faqs'
+          : pathname.endsWith('/reports')
+            ? 'reports'
+            : pathname.endsWith('/settings')
+              ? 'settings'
+              : 'dashboard';
 
   const handleTabChange = (tab: AdminTabType) => {
     if (tab === 'users') {
@@ -117,31 +117,18 @@ export default function AdminPage() {
   // App Version state
   const [androidVersion, setAndroidVersion] = useState('1.0.0');
   const [iosVersion, setIosVersion] = useState('1.0.0');
-  const [androidMinVersion, setAndroidMinVersion] = useState('1.0.0');
-  const [iosMinVersion, setIosMinVersion] = useState('1.0.0');
-  const [androidForceUpdate, setAndroidForceUpdate] = useState(false);
-  const [iosForceUpdate, setIosForceUpdate] = useState(false);
   const [appVersionLoading, setAppVersionLoading] = useState(false);
   const [appVersionMsg, setAppVersionMsg] = useState('');
 
   // CMS Pages state
-  const [cmsActiveSlug, setCmsActiveSlug] = useState<'terms' | 'privacy-policy' | 'refund-policy' | 'payment-policy' | 'community-guidelines'>('terms');
+  const [cmsActiveSlug, setCmsActiveSlug] = useState<'terms' | 'privacy-policy' | 'refund-policy' | 'client-payment-policy' | 'provider-payment-policy' | 'client-faqs' | 'provider-faqs' | 'community-guidelines'>('terms');
   const [cmsTitle, setCmsTitle] = useState('Terms & Conditions');
   const [cmsContent, setCmsContent] = useState('');
+  const [cmsFaqItems, setCmsFaqItems] = useState<{ question: string; answer: string }[]>([]);
   const [cmsLoading, setCmsLoading] = useState(false);
   const [cmsSaving, setCmsSaving] = useState(false);
   const [cmsSavedMsg, setCmsSavedMsg] = useState('');
   const [cmsPreview, setCmsPreview] = useState(false);
-
-  // FAQs state
-  const [faqsList, setFaqsList] = useState<{ id: number; question: string; answer: string; category: string; order: number }[]>([]);
-  const [faqsLoading, setFaqsLoading] = useState(false);
-  const [faqModalOpen, setFaqModalOpen] = useState(false);
-  const [editingFaqId, setEditingFaqId] = useState<number | null>(null);
-  const [faqQuestion, setFaqQuestion] = useState('');
-  const [faqAnswer, setFaqAnswer] = useState('');
-  const [faqCategory, setFaqCategory] = useState('General');
-  const [faqOrder, setFaqOrder] = useState(0);
 
   // Reports & Issues state
   const [reportsList, setReportsList] = useState<any[]>([]);
@@ -149,15 +136,15 @@ export default function AdminPage() {
   const [reportsLoading, setReportsLoading] = useState(false);
   const [reportsUpdatingId, setReportsUpdatingId] = useState<number | null>(null);
 
-  // Vouchers CRUD state
-  const [vouchersList, setVouchersList] = useState<{ id: number; code: string; title: string; amount: number; isActive: boolean; createdAt: string }[]>([]);
+  // Promo Codes CRUD state
+  const [promoCodesList, setPromoCodesList] = useState<{ id: number; code: string; title: string; amount: number; isActive: boolean; createdAt: string }[]>([]);
   const [vouchersLoading, setVouchersLoading] = useState(false);
   const [newVoucherCode, setNewVoucherCode] = useState('');
   const [newVoucherTitle, setNewVoucherTitle] = useState('');
   const [newVoucherAmount, setNewVoucherAmount] = useState('');
   const [newVoucherIsActive, setNewVoucherIsActive] = useState(true);
-  
-  // Edit Voucher Modal state
+
+  // Edit Promo Code Modal state
   const [editVoucherModalOpen, setEditVoucherModalOpen] = useState(false);
   const [editingVoucherId, setEditingVoucherId] = useState<number | null>(null);
   const [editVoucherCode, setEditVoucherCode] = useState('');
@@ -314,15 +301,15 @@ export default function AdminPage() {
   const fetchVouchers = async () => {
     setVouchersLoading(true);
     try {
-      const res = await fetch('/api/admin/settings/vouchers', {
+      const res = await fetch('/api/admin/settings/promocodes', {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
         const data = await res.json();
-        setVouchersList(data);
+        setPromoCodesList(data);
       }
     } catch (err) {
-      console.error('Fetch vouchers failed', err);
+      console.error('Fetch promo codes failed', err);
     } finally {
       setVouchersLoading(false);
     }
@@ -433,10 +420,6 @@ export default function AdminPage() {
         const data = await res.json();
         setAndroidVersion(data.androidVersion || '1.0.0');
         setIosVersion(data.iosVersion || '1.0.0');
-        setAndroidMinVersion(data.androidMinVersion || data.androidVersion || '1.0.0');
-        setIosMinVersion(data.iosMinVersion || data.iosVersion || '1.0.0');
-        setAndroidForceUpdate(Boolean(data.androidForceUpdate));
-        setIosForceUpdate(Boolean(data.iosForceUpdate));
       }
     } catch (err) {
       console.error('Fetch app versions failed', err);
@@ -455,11 +438,7 @@ export default function AdminPage() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           androidVersion,
-          iosVersion,
-          androidMinVersion,
-          iosMinVersion,
-          androidForceUpdate,
-          iosForceUpdate
+          iosVersion
         })
       });
       if (res.ok) {
@@ -482,7 +461,10 @@ export default function AdminPage() {
       case 'terms': return 'Terms & Conditions';
       case 'privacy-policy': return 'Privacy Policy';
       case 'refund-policy': return 'Refund Policy';
-      case 'payment-policy': return 'Payment Policy';
+      case 'client-payment-policy': return 'Client Payment Policy';
+      case 'provider-payment-policy': return 'Provider Payment Policy';
+      case 'client-faqs': return 'Client FAQ';
+      case 'provider-faqs': return 'Provider FAQ';
       case 'community-guidelines': return 'Community Guidelines';
       default: return slug;
     }
@@ -499,6 +481,27 @@ export default function AdminPage() {
         const data = await res.json();
         setCmsTitle(data.title || slugToTitle(slug));
         setCmsContent(data.content || '');
+
+        if (Array.isArray(data.faqs) && data.faqs.length > 0) {
+          setCmsFaqItems(data.faqs);
+        } else if (slug === 'client-faqs' || slug === 'provider-faqs' || slug === 'client-faq' || slug === 'provider-faq') {
+          const qMatches = [...(data.content || '').matchAll(/<b>Q:\s*(.*?)<\/b>/gi)];
+          const aMatches = [...(data.content || '').matchAll(/A:\s*(.*?)(?=<br>|<\/p>|$)/gi)];
+          const items: { question: string; answer: string }[] = [];
+          for (let i = 0; i < Math.max(qMatches.length, aMatches.length); i++) {
+            const q = qMatches[i] ? qMatches[i][1].replace(/<[^>]+>/g, '').trim() : '';
+            const a = aMatches[i] ? aMatches[i][1].replace(/<[^>]+>/g, '').trim() : '';
+            if (q || a) items.push({ question: q, answer: a });
+          }
+          if (items.length > 0) {
+            setCmsFaqItems(items);
+          } else {
+            setCmsFaqItems([
+              { question: 'How do I book an appointment?', answer: 'Select a salon or freelancer, choose your service and time slot, then confirm booking.' },
+              { question: 'Can I cancel or reschedule my booking?', answer: 'Yes, go to My Bookings in your profile to reschedule or cancel at least 2 hours prior.' }
+            ]);
+          }
+        }
       }
     } catch (err) {
       console.error('Fetch CMS page failed', err);
@@ -511,11 +514,17 @@ export default function AdminPage() {
     e.preventDefault();
     setCmsSaving(true);
     setCmsSavedMsg('');
+
+    let finalContent = cmsContent;
+    if (cmsActiveSlug === 'client-faqs' || cmsActiveSlug === 'provider-faqs') {
+      finalContent = JSON.stringify(cmsFaqItems);
+    }
+
     try {
       const res = await fetch('/api/admin/cms-pages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ slug: cmsActiveSlug, title: cmsTitle, content: cmsContent })
+        body: JSON.stringify({ slug: cmsActiveSlug, title: cmsTitle, content: finalContent })
       });
       if (res.ok) {
         setCmsSavedMsg('CMS Page updated successfully!');
@@ -531,76 +540,7 @@ export default function AdminPage() {
     }
   };
 
-  // --- FAQ HANDLERS ---
-  const fetchFaqs = async () => {
-    setFaqsLoading(true);
-    try {
-      const res = await fetch('/api/admin/faqs', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setFaqsList(data);
-      }
-    } catch (err) {
-      console.error('Fetch FAQs failed', err);
-    } finally {
-      setFaqsLoading(false);
-    }
-  };
 
-  const handleSaveFaq = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!faqQuestion.trim() || !faqAnswer.trim()) return;
-    setFaqsLoading(true);
-    try {
-      const res = await fetch('/api/admin/faqs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          id: editingFaqId,
-          question: faqQuestion,
-          answer: faqAnswer,
-          category: faqCategory,
-          order: Number(faqOrder)
-        })
-      });
-      if (res.ok) {
-        setFaqModalOpen(false);
-        setEditingFaqId(null);
-        setFaqQuestion('');
-        setFaqAnswer('');
-        setFaqCategory('General');
-        setFaqOrder(0);
-        fetchFaqs();
-      } else {
-        const errData = await res.json();
-        alert(errData.message || 'Failed to save FAQ');
-      }
-    } catch (err: any) {
-      alert(err.message || 'Error occurred');
-    } finally {
-      setFaqsLoading(false);
-    }
-  };
-
-  const handleDeleteFaq = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this FAQ?')) return;
-    setFaqsLoading(true);
-    try {
-      const res = await fetch(`/api/admin/faqs?id=${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        fetchFaqs();
-      }
-    } catch (err) {
-      console.error('Delete FAQ failed', err);
-    } finally {
-      setFaqsLoading(false);
-    }
-  };
 
   // --- REPORT & ISSUES HANDLERS ---
   const fetchReports = async (statusFilter = reportsTab) => {
@@ -790,8 +730,6 @@ export default function AdminPage() {
         fetchVouchers();
       } else if (activeTab === 'cms') {
         fetchCmsPage(cmsActiveSlug);
-      } else if (activeTab === 'faqs') {
-        fetchFaqs();
       } else if (activeTab === 'reports') {
         fetchReports(reportsTab);
       } else if (activeTab === 'settings') {
@@ -1096,7 +1034,7 @@ export default function AdminPage() {
         >
           <div className="flex flex-col items-center mb-8">
             <div className="w-42 h-42">
-              <img src="/assets/images/Look_Clean_logo.png" alt="LookClean Logo" className="w-full h-full object-cover" />
+              <img src="/assets/images/Look_Clean_New_Logo.png" alt="LookClean Logo" className="w-full h-full object-cover" />
             </div>
 
           </div>
@@ -1152,7 +1090,7 @@ export default function AdminPage() {
           {/* Logo */}
           <div className="flex justify-center pt-2">
             <div className="h-[95px]">
-              <img src="/assets/images/Look_Clean_logo.png" alt="LookClean Logo" className="w-full h-full object-cover" />
+              <img src="/assets/images/Look_Clean_New_Logo.png" alt="LookClean Logo" className="w-full h-full object-cover" />
             </div>
           </div>
 
@@ -1193,7 +1131,7 @@ export default function AdminPage() {
               `}
             >
               <Tag className="w-4 h-4" />
-              <span>Voucher Codes</span>
+              <span>Promo Codes</span>
             </button>
             <button
               onClick={() => handleTabChange('cms')}
@@ -1206,18 +1144,6 @@ export default function AdminPage() {
             >
               <FileText className="w-4 h-4" />
               <span>CMS Pages</span>
-            </button>
-            <button
-              onClick={() => handleTabChange('faqs')}
-              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-left cursor-pointer transition-all
-                ${activeTab === 'faqs'
-                  ? 'bg-primary/10 border border-primary/20 text-white'
-                  : 'text-gray-400 hover:text-white hover:bg-white/5'
-                }
-              `}
-            >
-              <HelpCircle className="w-4 h-4" />
-              <span>FAQ Menu</span>
             </button>
             <button
               onClick={() => handleTabChange('reports')}
@@ -1270,7 +1196,7 @@ export default function AdminPage() {
         <header className="md:hidden border-b border-gray-900 bg-gray-950/80 backdrop-blur px-6 py-4 flex justify-between items-center z-20">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl flex items-center justify-center overflow-hidden bg-gray-950/40 border border-gray-900">
-              <img src="/assets/images/Look_Clean_logo.png" alt="LookClean Logo" className="w-full h-full object-cover" />
+              <img src="/assets/images/Look_Clean_New_Logo.png" alt="LookClean Logo" className="w-full h-full object-cover" />
             </div>
             <span className="font-extrabold text-white text-lg">
               LookClean Admin
@@ -1287,9 +1213,9 @@ export default function AdminPage() {
             <div className="space-y-6">
               <div className="border-b border-gray-900 pb-4">
                 <h2 className="text-xl font-extrabold text-white flex items-center gap-2">
-                  <Tag className="w-5 h-5 text-primary" /> Voucher Codes Settings
+                  <Tag className="w-5 h-5 text-primary" /> Promo Codes Settings
                 </h2>
-                <p className="text-xs text-gray-400">Create, update, activate/deactivate, and delete customer discount voucher codes.</p>
+                <p className="text-xs text-gray-400">Create, update, activate/deactivate, and delete customer discount promo codes.</p>
               </div>
 
               <Card className="border border-gray-850 p-6 space-y-4">
@@ -1340,9 +1266,9 @@ export default function AdminPage() {
                 </form>
 
                 <div className="border-t border-gray-900 pt-6">
-                  <h4 className="text-xs font-bold text-gray-450 uppercase tracking-wider mb-3">All Vouchers</h4>
-                  {vouchersList.length === 0 ? (
-                    <p className="text-xs text-gray-500 italic py-4 text-center">No voucher codes created yet.</p>
+                  <h4 className="text-xs font-bold text-gray-450 uppercase tracking-wider mb-3">All Promo Codes</h4>
+                  {promoCodesList.length === 0 ? (
+                    <p className="text-xs text-gray-500 italic py-4 text-center">No promo codes created yet.</p>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full text-left border-collapse">
@@ -1357,7 +1283,7 @@ export default function AdminPage() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-900">
-                          {vouchersList.map((voucher) => (
+                          {promoCodesList.map((voucher) => (
                             <tr key={voucher.id} className="text-xs text-gray-300 hover:bg-white/2 transition-colors">
                               <td className="py-3.5 pr-4 font-bold text-white tracking-wider">{voucher.code}</td>
                               <td className="py-3.5 pr-4 text-gray-450">{voucher.title}</td>
@@ -1393,8 +1319,8 @@ export default function AdminPage() {
                                     }
                                   }}
                                   className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase border cursor-pointer select-none transition-all
-                                    ${voucher.isActive 
-                                      ? 'bg-emerald-500/10 text-emerald-450 border-emerald-500/20 hover:bg-emerald-500/20' 
+                                    ${voucher.isActive
+                                      ? 'bg-emerald-500/10 text-emerald-450 border-emerald-500/20 hover:bg-emerald-500/20'
                                       : 'bg-red-500/10 text-red-450 border-red-500/20 hover:bg-red-500/20'
                                     }
                                   `}
@@ -1529,7 +1455,10 @@ export default function AdminPage() {
                   { slug: 'terms', label: 'Terms & Conditions' },
                   { slug: 'privacy-policy', label: 'Privacy Policy' },
                   { slug: 'refund-policy', label: 'Refund Policy' },
-                  { slug: 'payment-policy', label: 'Payment Policy' },
+                  { slug: 'client-payment-policy', label: 'Client Payment Policy' },
+                  { slug: 'provider-payment-policy', label: 'Provider Payment Policy' },
+                  { slug: 'client-faqs', label: 'Client FAQ' },
+                  { slug: 'provider-faqs', label: 'Provider FAQ' },
                   { slug: 'community-guidelines', label: 'Community Guidelines' }
                 ].map((item) => (
                   <button
@@ -1582,142 +1511,186 @@ export default function AdminPage() {
                     </div>
                   )}
 
-                  {/* Rich formatting toolbar */}
-                  {!cmsPreview && (
-                    <div className="flex flex-wrap gap-1.5 p-2 bg-gray-950 border border-gray-850 rounded-xl text-xs">
-                      <button
-                        type="button"
-                        onClick={() => setCmsContent(prev => prev + '<strong>Bold Text</strong>')}
-                        className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-gray-200 rounded font-bold text-xs"
-                      >
-                        B
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCmsContent(prev => prev + '<em>Italic Text</em>')}
-                        className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-gray-200 rounded italic text-xs"
-                      >
-                        I
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCmsContent(prev => prev + '\n<h1>Heading 1</h1>\n')}
-                        className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-gray-200 rounded font-extrabold text-xs"
-                      >
-                        H1
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCmsContent(prev => prev + '\n<h2>Heading 2</h2>\n')}
-                        className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-gray-200 rounded font-bold text-xs"
-                      >
-                        H2
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCmsContent(prev => prev + '\n<p>Paragraph text goes here...</p>\n')}
-                        className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-gray-200 rounded text-xs"
-                      >
-                        Paragraph
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCmsContent(prev => prev + '\n<ul className="list-disc ml-5">\n  <li>Point 1</li>\n  <li>Point 2</li>\n</ul>\n')}
-                        className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-gray-200 rounded text-xs"
-                      >
-                        Bullet List
-                      </button>
-                    </div>
-                  )}
-
+                  {/* CMS Content Editor */}
                   {cmsLoading ? (
                     <div className="py-12 text-center text-gray-400 text-xs">Loading CMS page content...</div>
-                  ) : cmsPreview ? (
-                    <div className="p-6 bg-gray-950 border border-gray-850 rounded-2xl min-h-[300px] text-gray-200 text-sm leading-relaxed prose prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: cmsContent }} />
+                  ) : cmsActiveSlug === 'client-faqs' || cmsActiveSlug === 'provider-faqs' ? (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">FAQ Query &amp; Answer List ({cmsFaqItems.length} Pairs)</span>
+                        <button
+                          type="button"
+                          onClick={() => setCmsFaqItems(prev => [...prev, { question: '', answer: '' }])}
+                          className="px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/20 text-xs font-bold text-primary hover:bg-primary/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> + Add Q&amp;A Pair
+                        </button>
+                      </div>
+
+                      {cmsFaqItems.length === 0 ? (
+                        <div className="p-8 text-center border border-dashed border-gray-800 rounded-2xl text-xs text-gray-500">
+                          No FAQ Q&amp;A pairs added yet. Click &quot;+ Add Q&amp;A Pair&quot; above to create one.
+                        </div>
+                      ) : (
+                        cmsFaqItems.map((item, idx) => (
+                          <div key={idx} className="p-5 bg-gray-950 border border-gray-850 rounded-2xl space-y-3 relative group">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] font-bold text-primary uppercase tracking-wider">Q&amp;A #{idx + 1}</span>
+                              <div className="flex items-center gap-1.5">
+                                {idx > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const next = [...cmsFaqItems];
+                                      const temp = next[idx];
+                                      next[idx] = next[idx - 1];
+                                      next[idx - 1] = temp;
+                                      setCmsFaqItems(next);
+                                    }}
+                                    className="px-2 py-1 bg-gray-900 hover:bg-gray-850 text-gray-300 rounded text-[10px] font-semibold cursor-pointer"
+                                  >
+                                    ↑ Up
+                                  </button>
+                                )}
+                                {idx < cmsFaqItems.length - 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const next = [...cmsFaqItems];
+                                      const temp = next[idx];
+                                      next[idx] = next[idx + 1];
+                                      next[idx + 1] = temp;
+                                      setCmsFaqItems(next);
+                                    }}
+                                    className="px-2 py-1 bg-gray-900 hover:bg-gray-850 text-gray-300 rounded text-[10px] font-semibold cursor-pointer"
+                                  >
+                                    ↓ Down
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setCmsFaqItems(prev => prev.filter((_, i) => i !== idx))}
+                                  className="px-2 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded text-[10px] font-semibold cursor-pointer"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Query / Question</label>
+                              <input
+                                type="text"
+                                value={item.question}
+                                onChange={(e) => {
+                                  const next = [...cmsFaqItems];
+                                  next[idx].question = e.target.value;
+                                  setCmsFaqItems(next);
+                                }}
+                                placeholder="e.g. How do I book an appointment?"
+                                className="w-full text-xs font-semibold text-white bg-gray-900 border border-gray-800 rounded-xl px-3.5 py-2 focus:border-primary focus:outline-none"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Answer</label>
+                              <textarea
+                                rows={3}
+                                value={item.answer}
+                                onChange={(e) => {
+                                  const next = [...cmsFaqItems];
+                                  next[idx].answer = e.target.value;
+                                  setCmsFaqItems(next);
+                                }}
+                                placeholder="e.g. Select a salon or freelancer, choose your service and time slot, then confirm."
+                                className="w-full text-xs text-gray-200 bg-gray-900 border border-gray-800 rounded-xl p-3.5 focus:border-primary focus:outline-none leading-relaxed"
+                              />
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
                   ) : (
-                    <textarea
-                      rows={14}
-                      value={cmsContent}
-                      onChange={(e) => setCmsContent(e.target.value)}
-                      placeholder="Write HTML content here..."
-                      className="w-full text-xs font-mono text-gray-200 bg-gray-950 border border-gray-850 rounded-2xl p-4 focus:border-primary focus:outline-none transition-all leading-relaxed"
-                    />
+                    <>
+                      {/* Rich formatting toolbar */}
+                      {!cmsPreview && (
+                        <div className="flex flex-wrap gap-1.5 p-2 bg-gray-950 border border-gray-850 rounded-xl text-xs">
+                          <button
+                            type="button"
+                            onClick={() => setCmsContent(prev => prev + '<strong>Bold Text</strong>')}
+                            className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-gray-200 rounded font-bold text-xs"
+                          >
+                            B
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCmsContent(prev => prev + '<em>Italic Text</em>')}
+                            className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-gray-200 rounded italic text-xs"
+                          >
+                            I
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCmsContent(prev => prev + '\n<h1>Heading 1</h1>\n')}
+                            className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-gray-200 rounded font-extrabold text-xs"
+                          >
+                            H1
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCmsContent(prev => prev + '\n<h2>Heading 2</h2>\n')}
+                            className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-gray-200 rounded font-bold text-xs"
+                          >
+                            H2
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCmsContent(prev => prev + '\n<p>Paragraph text goes here...</p>\n')}
+                            className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-gray-200 rounded text-xs"
+                          >
+                            Paragraph
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCmsContent(prev => prev + '\n<ul className="list-disc ml-5 space-y-1">\n  <li>Bullet point 1</li>\n  <li>Bullet point 2</li>\n</ul>\n')}
+                            className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-gray-200 rounded text-xs"
+                          >
+                            Bullet List
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCmsContent(prev => prev + '\n<div className="p-4 bg-primary/10 border border-primary/20 rounded-xl my-4">\n  <p className="font-semibold text-primary">Important Notice / Highlight</p>\n</div>\n')}
+                            className="px-2.5 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary rounded text-xs font-semibold"
+                          >
+                            Callout Box
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCmsContent(prev => prev + '\n<hr className="my-6 border-gray-850" />\n')}
+                            className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-gray-400 rounded text-xs"
+                          >
+                            Divider
+                          </button>
+                        </div>
+                      )}
+
+                      {cmsPreview ? (
+                        <div className="p-6 bg-gray-950 border border-gray-850 rounded-2xl min-h-[300px] text-gray-200 text-sm leading-relaxed prose prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: cmsContent }} />
+                      ) : (
+                        <textarea
+                          rows={14}
+                          value={cmsContent}
+                          onChange={(e) => setCmsContent(e.target.value)}
+                          placeholder="Write HTML content here..."
+                          className="w-full text-xs font-mono text-gray-200 bg-gray-950 border border-gray-850 rounded-2xl p-4 focus:border-primary focus:outline-none transition-all leading-relaxed"
+                        />
+                      )}
+                    </>
                   )}
                 </form>
               </Card>
             </div>
-          ) : activeTab === 'faqs' ? (
-            <div className="space-y-6">
-              <div className="border-b border-gray-900 pb-4 flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-extrabold text-white flex items-center gap-2">
-                    <HelpCircle className="w-5 h-5 text-primary" /> FAQ Management
-                  </h2>
-                  <p className="text-xs text-gray-400">Add, edit, or delete frequently asked questions displayed in the mobile app.</p>
-                </div>
-                <Button
-                  onClick={() => {
-                    setEditingFaqId(null);
-                    setFaqQuestion('');
-                    setFaqAnswer('');
-                    setFaqCategory('General');
-                    setFaqOrder(faqsList.length + 1);
-                    setFaqModalOpen(true);
-                  }}
-                  leftIcon={<Plus className="w-4 h-4" />}
-                >
-                  Add Question &amp; Answer
-                </Button>
-              </div>
 
-              {faqsLoading ? (
-                <div className="py-12 text-center text-gray-400 text-xs">Loading FAQs...</div>
-              ) : faqsList.length === 0 ? (
-                <Card className="p-8 text-center text-gray-400 text-xs">No FAQs added yet. Click &apos;Add Question &amp; Answer&apos; to create one.</Card>
-              ) : (
-                <div className="grid grid-cols-1 gap-4">
-                  {faqsList.map((faq) => (
-                    <Card key={faq.id} className="border border-gray-850 p-5 space-y-3 relative group">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-primary/10 border border-primary/20 text-primary">
-                              {faq.category || 'General'}
-                            </span>
-                            <span className="text-[10px] font-semibold text-gray-500">Order #{faq.order || 0}</span>
-                          </div>
-                          <h4 className="text-base font-bold text-white pt-1">{faq.question}</h4>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => {
-                              setEditingFaqId(faq.id);
-                              setFaqQuestion(faq.question);
-                              setFaqAnswer(faq.answer);
-                              setFaqCategory(faq.category || 'General');
-                              setFaqOrder(faq.order || 0);
-                              setFaqModalOpen(true);
-                            }}
-                            className="p-2 rounded-xl bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-white transition-all cursor-pointer"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteFaq(faq.id)}
-                            className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all cursor-pointer"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                      <p className="text-xs text-gray-300 leading-relaxed bg-gray-950 p-3.5 rounded-xl border border-gray-900">
-                        {faq.answer}
-                      </p>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </div>
           ) : activeTab === 'reports' ? (
             <div className="space-y-6">
               <div className="border-b border-gray-900 pb-4">
@@ -1771,7 +1744,7 @@ export default function AdminPage() {
                       } else if (Array.isArray(report.attachments)) {
                         attachmentsArr = report.attachments;
                       }
-                    } catch {}
+                    } catch { }
 
                     return (
                       <Card key={report.id} className="border border-gray-850 p-6 space-y-4">
@@ -2059,25 +2032,6 @@ export default function AdminPage() {
                               onChange={(e) => setAndroidVersion(e.target.value)}
                               required
                             />
-                            <Input
-                              label="Minimum Required Version"
-                              type="text"
-                              placeholder="1.0.0"
-                              value={androidMinVersion}
-                              onChange={(e) => setAndroidMinVersion(e.target.value)}
-                            />
-                            <div className="flex items-center gap-3 pt-2">
-                              <input
-                                type="checkbox"
-                                id="androidForce"
-                                checked={androidForceUpdate}
-                                onChange={(e) => setAndroidForceUpdate(e.target.checked)}
-                                className="w-4 h-4 accent-primary rounded cursor-pointer"
-                              />
-                              <label htmlFor="androidForce" className="text-xs font-semibold text-gray-300 cursor-pointer">
-                                Force Update for Android Users
-                              </label>
-                            </div>
                           </div>
 
                           {/* iOS Settings Card */}
@@ -2093,25 +2047,6 @@ export default function AdminPage() {
                               onChange={(e) => setIosVersion(e.target.value)}
                               required
                             />
-                            <Input
-                              label="Minimum Required Version"
-                              type="text"
-                              placeholder="1.0.0"
-                              value={iosMinVersion}
-                              onChange={(e) => setIosMinVersion(e.target.value)}
-                            />
-                            <div className="flex items-center gap-3 pt-2">
-                              <input
-                                type="checkbox"
-                                id="iosForce"
-                                checked={iosForceUpdate}
-                                onChange={(e) => setIosForceUpdate(e.target.checked)}
-                                className="w-4 h-4 accent-primary rounded cursor-pointer"
-                              />
-                              <label htmlFor="iosForce" className="text-xs font-semibold text-gray-300 cursor-pointer">
-                                Force Update for iOS Users
-                              </label>
-                            </div>
                           </div>
                         </div>
 
@@ -2852,11 +2787,10 @@ export default function AdminPage() {
                         </div>
 
                         {dbStatusResult && (
-                          <div className={`p-5 rounded-xl border text-xs leading-relaxed space-y-3 ${
-                            dbStatusResult.connected 
-                              ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-400' 
+                          <div className={`p-5 rounded-xl border text-xs leading-relaxed space-y-3 ${dbStatusResult.connected
+                              ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-400'
                               : 'bg-red-500/5 border-red-500/20 text-red-400'
-                          }`}>
+                            }`}>
                             <div className="flex items-center gap-2 font-bold uppercase tracking-wider text-[11px]">
                               {dbStatusResult.connected ? (
                                 <Check className="w-4 h-4 text-emerald-500" />
@@ -3115,10 +3049,10 @@ export default function AdminPage() {
                     {(() => {
                       const imgUrl = (selectedUser.role === 'provider' ? selectedUser.providerProfile?.profileImageUrl : selectedUser.clientProfile?.profileImageUrl) || undefined;
                       return imgUrl ? (
-                        <img 
-                          src={imgUrl} 
-                          alt={selectedUser.name} 
-                          className="w-full h-full object-cover" 
+                        <img
+                          src={imgUrl}
+                          alt={selectedUser.name}
+                          className="w-full h-full object-cover"
                         />
                       ) : (
                         <div className="w-full h-full bg-gradient-to-br from-slate-800 to-slate-900 text-slate-400 flex items-center justify-center font-bold text-2xl uppercase">
@@ -3259,7 +3193,7 @@ export default function AdminPage() {
                         <MapPin className="w-4 h-4 text-primary" />
                         <span className="text-white font-semibold">{selectedUser.clientProfile?.location || 'No Location Set'}</span>
                       </div>
-                      
+
                       {selectedUser.clientProfile?.latitude !== undefined && selectedUser.clientProfile?.latitude !== null && (
                         <div className="p-3 bg-gray-900/50 rounded-xl border border-gray-850 space-y-1.5">
                           <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block">Coordinates</span>
@@ -3299,81 +3233,7 @@ export default function AdminPage() {
         )}
       </AnimatePresence>
 
-      {/* FAQ MODAL */}
-      <AnimatePresence>
-        {faqModalOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.5 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setFaqModalOpen(false)}
-              className="fixed inset-0 bg-black z-40"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="fixed inset-0 m-auto w-full max-w-lg h-fit bg-gray-950 border border-gray-850 shadow-2xl z-50 p-6 rounded-2xl space-y-4"
-            >
-              <div className="flex items-center justify-between border-b border-gray-900 pb-3">
-                <h3 className="text-base font-bold text-white">
-                  {editingFaqId ? 'Edit FAQ' : 'Add New FAQ'}
-                </h3>
-                <button onClick={() => setFaqModalOpen(false)} className="text-gray-400 hover:text-white cursor-pointer">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
 
-              <form onSubmit={handleSaveFaq} className="space-y-4">
-                <Input
-                  label="Question"
-                  type="text"
-                  placeholder="e.g. How do I book an appointment?"
-                  value={faqQuestion}
-                  onChange={(e) => setFaqQuestion(e.target.value)}
-                  required
-                />
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block">Answer Description</label>
-                  <textarea
-                    rows={4}
-                    placeholder="Enter answer explanation..."
-                    value={faqAnswer}
-                    onChange={(e) => setFaqAnswer(e.target.value)}
-                    required
-                    className="w-full text-xs text-gray-200 bg-gray-950 border border-gray-850 rounded-xl p-3 focus:border-primary focus:outline-none"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <Input
-                    label="Category"
-                    type="text"
-                    placeholder="General"
-                    value={faqCategory}
-                    onChange={(e) => setFaqCategory(e.target.value)}
-                  />
-                  <Input
-                    label="Sort Order"
-                    type="number"
-                    placeholder="1"
-                    value={String(faqOrder)}
-                    onChange={(e) => setFaqOrder(Number(e.target.value))}
-                  />
-                </div>
-                <div className="flex justify-end gap-3 pt-2">
-                  <Button variant="secondary" type="button" onClick={() => setFaqModalOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" isLoading={faqsLoading}>
-                    Save FAQ
-                  </Button>
-                </div>
-              </form>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
     </div>
   );
 }
