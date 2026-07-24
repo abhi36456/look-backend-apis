@@ -1569,21 +1569,26 @@ const openApiSpec = {
                   type: 'object',
                   properties: {
                     id: { type: 'integer' },
-                    slug: { type: 'string', example: 'terms' },
-                    title: { type: 'string', example: 'Terms & Conditions' },
-                    content: { type: 'string', example: '<p>Our terms of service...</p>' },
-                    faqs: {
-                      type: 'array',
-                      description: 'Parsed Q&A items array (populated when viewing client-faq or provider-faq)',
-                      items: {
-                        type: 'object',
-                        properties: {
-                          question: { type: 'string', example: 'How do I book an appointment?' },
-                          answer: { type: 'string', example: 'Select a salon or freelancer, choose your service and time slot, then confirm.' }
+                    slug: { type: 'string', example: 'client-faqs' },
+                    title: { type: 'string', example: 'Client FAQ' },
+                    contentType: { type: 'string', enum: ['html', 'array'], example: 'array', description: 'Content format type: "html" for HTML string or "array" for JSON array' },
+                    content: {
+                      oneOf: [
+                        { type: 'string', example: '<h1>Terms & Conditions</h1>...' },
+                        {
+                          type: 'array',
+                          items: {
+                            type: 'object',
+                            properties: {
+                              question: { type: 'string', example: 'How do I book an appointment?' },
+                              answer: { type: 'string', example: 'Select a salon or freelancer, choose your service and time slot, then confirm booking.' }
+                            }
+                          }
                         }
-                      }
+                      ]
                     },
-                    updatedAt: { type: 'string', format: 'date-time' }
+                    updatedAt: { type: 'string', format: 'date-time' },
+                    createdAt: { type: 'string', format: 'date-time' }
                   }
                 }
               }

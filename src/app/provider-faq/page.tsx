@@ -22,10 +22,12 @@ export default function ProviderFaqPage() {
       .then((d) => {
         if (d) {
           setTitle(d.title || 'Provider FAQ');
-          setContent(d.content || '');
-          if (Array.isArray(d.faqs) && d.faqs.length > 0) {
+          setContent(typeof d.content === 'string' ? d.content : '');
+          if (Array.isArray(d.content)) {
+            setFaqs(d.content);
+          } else if (Array.isArray(d.faqs) && d.faqs.length > 0) {
             setFaqs(d.faqs);
-          } else if (d.content) {
+          } else if (d.content && typeof d.content === 'string') {
             try {
               if (d.content.trim().startsWith('[')) {
                 setFaqs(JSON.parse(d.content));

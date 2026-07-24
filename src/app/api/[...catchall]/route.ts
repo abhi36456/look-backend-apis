@@ -129,12 +129,18 @@ const mockDb = {
     {
       slug: 'client-faqs',
       title: 'Client FAQ',
-      content: '<h1>Client FAQ</h1><p><b>Q: How do I book an appointment?</b><br>A: Select a provider, pick your service and time slot, then confirm.<br><br><b>Q: How can I cancel or reschedule?</b><br>A: Go to My Bookings in your profile to reschedule or cancel.</p>'
+      content: JSON.stringify([
+        { question: 'How do I book an appointment?', answer: 'Select a salon or freelancer, choose your service and time slot, then confirm booking.' },
+        { question: 'Can I cancel or reschedule my booking?', answer: 'Yes, go to My Bookings in your profile to reschedule or cancel at least 2 hours prior.' }
+      ])
     },
     {
       slug: 'provider-faqs',
       title: 'Provider FAQ',
-      content: '<h1>Provider FAQ</h1><p><b>Q: How do I receive booking notifications?</b><br>A: Notifications are sent via push notifications and sms.<br><br><b>Q: How do I set my schedule?</b><br>A: Configure your working hours under Schedule Settings.</p>'
+      content: JSON.stringify([
+        { question: 'How do I receive booking notifications?', answer: 'Notifications are sent via push notifications and SMS.' },
+        { question: 'How do I set my schedule?', answer: 'Configure your working hours under Schedule Settings.' }
+      ])
     },
     {
       slug: 'community-guidelines',
@@ -1636,6 +1642,45 @@ export async function GET(
       if (slug === 'client-faq') slug = 'client-faqs';
       if (slug === 'provider-faq') slug = 'provider-faqs';
 
+      const formatCmsPage = (page: any) => {
+        if (!page) return page;
+        let rawContent = page.content;
+        let parsedContent = rawContent;
+        let contentType: 'array' | 'html' = 'html';
+
+        if (Array.isArray(rawContent)) {
+          contentType = 'array';
+          parsedContent = rawContent;
+        } else if (typeof rawContent === 'string') {
+          const trimmed = rawContent.trim();
+          if (trimmed.startsWith('[')) {
+            try {
+              const parsed = JSON.parse(rawContent);
+              if (Array.isArray(parsed)) {
+                contentType = 'array';
+                parsedContent = parsed;
+              }
+            } catch {
+              contentType = 'html';
+            }
+          } else {
+            contentType = 'html';
+          }
+        } else if (typeof rawContent === 'object' && rawContent !== null) {
+          contentType = 'array';
+          parsedContent = rawContent;
+        }
+
+        const pageObj = typeof page.toObject === 'function' ? page.toObject() : { ...page };
+        delete pageObj.faqs;
+
+        return {
+          ...pageObj,
+          contentType,
+          content: parsedContent
+        };
+      };
+
       if (slug && slug !== 'pages') {
         const page = await executeWithDbFallback(
           async () => await prisma.cmsPage.findUnique({ where: { slug } }),
@@ -1644,28 +1689,14 @@ export async function GET(
         if (!page) {
           return NextResponse.json({ message: 'CMS page not found' }, { status: 404 });
         }
-        let faqs: { question: string; answer: string }[] = [];
-        try {
-          if (page.content && page.content.trim().startsWith('[')) {
-            faqs = JSON.parse(page.content);
-          } else if (page.content) {
-            const qMatches = [...page.content.matchAll(/<b>Q:\s*(.*?)<\/b>/gi)];
-            const aMatches = [...page.content.matchAll(/A:\s*(.*?)(?=<br>|<\/p>|$)/gi)];
-            for (let i = 0; i < Math.max(qMatches.length, aMatches.length); i++) {
-              faqs.push({
-                question: qMatches[i] ? qMatches[i][1].replace(/<[^>]+>/g, '').trim() : '',
-                answer: aMatches[i] ? aMatches[i][1].replace(/<[^>]+>/g, '').trim() : ''
-              });
-            }
-          }
-        } catch { }
-        return NextResponse.json({ ...page, faqs });
+        return NextResponse.json(formatCmsPage(page));
       } else {
         const pages = await executeWithDbFallback(
           async () => await prisma.cmsPage.findMany(),
           async () => mockDb.cmsPages
         );
-        return NextResponse.json(pages);
+        const formattedPages = Array.isArray(pages) ? pages.map(formatCmsPage) : pages;
+        return NextResponse.json(formattedPages);
       }
     }
 
@@ -4506,29 +4537,70 @@ export async function POST(
         return NextResponse.json({ message: 'slug and content are required' }, { status: 400 });
       }
 
+      const dbContent = typeof content === 'object' ? JSON.stringify(content) : content;
+
+      const formatCmsPage = (page: any) => {
+        if (!page) return page;
+        let rawContent = page.content;
+        let parsedContent = rawContent;
+        let contentType: 'array' | 'html' = 'html';
+
+        if (Array.isArray(rawContent)) {
+          contentType = 'array';
+          parsedContent = rawContent;
+        } else if (typeof rawContent === 'string') {
+          const trimmed = rawContent.trim();
+          if (trimmed.startsWith('[')) {
+            try {
+              const parsed = JSON.parse(rawContent);
+              if (Array.isArray(parsed)) {
+                contentType = 'array';
+                parsedContent = parsed;
+              }
+            } catch {
+              contentType = 'html';
+            }
+          } else {
+            contentType = 'html';
+          }
+        } else if (typeof rawContent === 'object' && rawContent !== null) {
+          contentType = 'array';
+          parsedContent = rawContent;
+        }
+
+        const pageObj = typeof page.toObject === 'function' ? page.toObject() : { ...page };
+        delete pageObj.faqs;
+
+        return {
+          ...pageObj,
+          contentType,
+          content: parsedContent
+        };
+      };
+
       try {
         const updatedPage = await executeWithDbFallback(
           async () => {
             return await prisma.cmsPage.upsert({
               where: { slug },
-              update: { title: title || slug, content },
-              create: { slug, title: title || slug, content }
+              update: { title: title || slug, content: dbContent },
+              create: { slug, title: title || slug, content: dbContent }
             });
           },
           async () => {
             const idx = mockDb.cmsPages.findIndex((p) => p.slug === slug);
             if (idx !== -1) {
               if (title) mockDb.cmsPages[idx].title = title;
-              mockDb.cmsPages[idx].content = content;
+              mockDb.cmsPages[idx].content = dbContent;
               return mockDb.cmsPages[idx];
             } else {
-              const page = { slug, title: title || slug, content };
+              const page = { slug, title: title || slug, content: dbContent };
               mockDb.cmsPages.push(page);
               return page;
             }
           }
         );
-        return NextResponse.json({ success: true, page: updatedPage });
+        return NextResponse.json({ success: true, page: formatCmsPage(updatedPage) });
       } catch (err: any) {
         return NextResponse.json({ message: err.message || 'Failed to update CMS page' }, { status: 400 });
       }

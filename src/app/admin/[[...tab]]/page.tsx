@@ -11,6 +11,7 @@ import {
 import Button from '@/components/Button';
 import Input from '@/components/Input';
 import Card from '@/components/Card';
+import { CmsRichEditor } from '@/components/CmsRichEditor';
 
 interface UserData {
   id: number;
@@ -480,13 +481,16 @@ export default function AdminPage() {
       if (res.ok) {
         const data = await res.json();
         setCmsTitle(data.title || slugToTitle(slug));
-        setCmsContent(data.content || '');
+        setCmsContent(typeof data.content === 'string' ? data.content : JSON.stringify(data.content, null, 2));
 
-        if (Array.isArray(data.faqs) && data.faqs.length > 0) {
+        if (Array.isArray(data.content)) {
+          setCmsFaqItems(data.content);
+        } else if (Array.isArray(data.faqs) && data.faqs.length > 0) {
           setCmsFaqItems(data.faqs);
         } else if (slug === 'client-faqs' || slug === 'provider-faqs' || slug === 'client-faq' || slug === 'provider-faq') {
-          const qMatches = [...(data.content || '').matchAll(/<b>Q:\s*(.*?)<\/b>/gi)];
-          const aMatches = [...(data.content || '').matchAll(/A:\s*(.*?)(?=<br>|<\/p>|$)/gi)];
+          const contentStr = typeof data.content === 'string' ? data.content : '';
+          const qMatches = [...contentStr.matchAll(/<b>Q:\s*(.*?)<\/b>/gi)];
+          const aMatches = [...contentStr.matchAll(/A:\s*(.*?)(?=<br>|<\/p>|$)/gi)];
           const items: { question: string; answer: string }[] = [];
           for (let i = 0; i < Math.max(qMatches.length, aMatches.length); i++) {
             const q = qMatches[i] ? qMatches[i][1].replace(/<[^>]+>/g, '').trim() : '';
@@ -1492,13 +1496,6 @@ export default function AdminPage() {
                       />
                     </div>
                     <div className="flex items-center gap-3 pt-4 md:pt-0">
-                      <button
-                        type="button"
-                        onClick={() => setCmsPreview(!cmsPreview)}
-                        className="px-3.5 py-2 rounded-xl bg-gray-900 border border-gray-800 text-xs font-semibold text-gray-300 hover:text-white flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <Eye className="w-3.5 h-3.5" /> {cmsPreview ? 'Edit HTML' : 'Live Preview'}
-                      </button>
                       <Button type="submit" isLoading={cmsSaving} leftIcon={<Save className="w-4 h-4" />}>
                         Save CMS Page
                       </Button>
@@ -1611,81 +1608,11 @@ export default function AdminPage() {
                       )}
                     </div>
                   ) : (
-                    <>
-                      {/* Rich formatting toolbar */}
-                      {!cmsPreview && (
-                        <div className="flex flex-wrap gap-1.5 p-2 bg-gray-950 border border-gray-850 rounded-xl text-xs">
-                          <button
-                            type="button"
-                            onClick={() => setCmsContent(prev => prev + '<strong>Bold Text</strong>')}
-                            className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-gray-200 rounded font-bold text-xs"
-                          >
-                            B
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setCmsContent(prev => prev + '<em>Italic Text</em>')}
-                            className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-gray-200 rounded italic text-xs"
-                          >
-                            I
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setCmsContent(prev => prev + '\n<h1>Heading 1</h1>\n')}
-                            className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-gray-200 rounded font-extrabold text-xs"
-                          >
-                            H1
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setCmsContent(prev => prev + '\n<h2>Heading 2</h2>\n')}
-                            className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-gray-200 rounded font-bold text-xs"
-                          >
-                            H2
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setCmsContent(prev => prev + '\n<p>Paragraph text goes here...</p>\n')}
-                            className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-gray-200 rounded text-xs"
-                          >
-                            Paragraph
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setCmsContent(prev => prev + '\n<ul className="list-disc ml-5 space-y-1">\n  <li>Bullet point 1</li>\n  <li>Bullet point 2</li>\n</ul>\n')}
-                            className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-gray-200 rounded text-xs"
-                          >
-                            Bullet List
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setCmsContent(prev => prev + '\n<div className="p-4 bg-primary/10 border border-primary/20 rounded-xl my-4">\n  <p className="font-semibold text-primary">Important Notice / Highlight</p>\n</div>\n')}
-                            className="px-2.5 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary rounded text-xs font-semibold"
-                          >
-                            Callout Box
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setCmsContent(prev => prev + '\n<hr className="my-6 border-gray-850" />\n')}
-                            className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-gray-400 rounded text-xs"
-                          >
-                            Divider
-                          </button>
-                        </div>
-                      )}
-
-                      {cmsPreview ? (
-                        <div className="p-6 bg-gray-950 border border-gray-850 rounded-2xl min-h-[300px] text-gray-200 text-sm leading-relaxed prose prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: cmsContent }} />
-                      ) : (
-                        <textarea
-                          rows={14}
-                          value={cmsContent}
-                          onChange={(e) => setCmsContent(e.target.value)}
-                          placeholder="Write HTML content here..."
-                          className="w-full text-xs font-mono text-gray-200 bg-gray-950 border border-gray-850 rounded-2xl p-4 focus:border-primary focus:outline-none transition-all leading-relaxed"
-                        />
-                      )}
-                    </>
+                    <CmsRichEditor
+                      value={cmsContent}
+                      onChange={setCmsContent}
+                      placeholder="Write policy content here..."
+                    />
                   )}
                 </form>
               </Card>
